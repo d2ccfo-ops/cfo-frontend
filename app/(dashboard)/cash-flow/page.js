@@ -7,6 +7,7 @@ import Metric from "@/components/ui/Metric";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import MetricCardSkeleton from "@/components/ui/MetricCardSkeleton";
 import CashForecastCard from "@/components/cards/CashForecastCard";
+import ScenarioPanel from "@/components/cards/ScenarioPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { formatInrShort } from "@/components/ui/AbbrCurrency";
 
@@ -48,23 +49,40 @@ function formatDay(iso) {
   });
 }
 
+// §16 horizons. Each answers a different question, which is why they are a
+// fixed set and not a free number.
+const HORIZONS = [
+  { days: 7, label: "7 days" },
+  { days: 30, label: "30 days" },
+  { days: 90, label: "90 days" },
+];
+
 export default function CashFlowPage() {
   const { getToken } = useAuth();
+  const [horizon, setHorizon] = useState(30);
   const [forecast, setForecast] = useState(null);
   const [availableCash, setAvailableCash] = useState(null);
   const [payables, setPayables] = useState(null);
   const [burn, setBurn] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [scenario, setScenario] = useState(null);
+  const [scenarioRunning, setScenarioRunning] = useState(false);
+  const [scenarioError, setScenarioError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      // A stale scenario line drawn against a freshly-changed horizon would
+      // be comparing two different questions, so it is cleared rather than
+      // left on screen while the new base loads.
+      setScenario(null);
+      setScenarioError("");
       try {
         const token = await getToken();
         const headers = { Authorization: `Bearer ${token}` };
         const [forecastRes, cashRes, payablesRes, burnRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/cash-forecast`, { headers }),
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/cash-forecast?horizon=${horizon}`, { headers }),
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/available-cash`, { headers }),
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/payables`, { headers }),
           // Runway is the number a founder acts on from THIS screen — it was
@@ -88,19 +106,57 @@ export default function CashFlowPage() {
     return () => {
       cancelled = true;
     };
-  }, [getToken]);
+  }, [getToken, horizon]);
+
+  async function runScenario(params) {
+    setScenarioRunning(true);
+    setScenarioError("");
+    try {
+      const token = await getToken();
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/cash-forecast/scenario`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ horizon, ...params }),
+      });
+      if (!res.ok) {
+        setScenarioError("Couldn't run that scenario.");
+        setScenario(null);
+        return;
+      }
+      setScenario(await res.json());
+    } catch {
+      setScenarioError("Couldn't reach the backend.");
+      setScenario(null);
+    } finally {
+      setScenarioRunning(false);
+    }
+  }
 
   const verdict = forecast ? RELIABILITY[forecast.reliability] ?? RELIABILITY.directional : null;
   const closing = forecast ? paiseToRupees(forecast.totals.closingMinor) : null;
   const lastDay = forecast?.days?.[forecast.days.length - 1];
 
-  const series = forecast
+  // When a scenario is showing, the base is drawn from the SERVER's copy of
+  // it (scenario.base), not from the separately-fetched `forecast` — the two
+  // were computed at different instants, and diffing across that gap would
+  // attribute ordinary elapsed time to the scenario.
+  const baseDays = scenario?.base?.days ?? forecast?.days ?? null;
+  const series = baseDays
     ? [
         {
-          name: "Projected balance",
-          colorRole: "accent",
-          points: forecast.days.map((d) => ({ x: formatDay(d.date), y: paiseToRupees(d.closingMinor) })),
+          name: scenario ? "Base" : "Projected balance",
+          colorRole: scenario ? "neutral" : "accent",
+          points: baseDays.map((d) => ({ x: formatDay(d.date), y: paiseToRupees(d.closingMinor) })),
         },
+        ...(scenario
+          ? [
+              {
+                name: "Scenario",
+                colorRole: "accent",
+                points: scenario.scenario.days.map((d) => ({ x: formatDay(d.date), y: paiseToRupees(d.closingMinor) })),
+              },
+            ]
+          : []),
       ]
     : null;
 
@@ -111,7 +167,7 @@ export default function CashFlowPage() {
         subtitle={
           forecast
             ? `Next ${forecast.horizonDays} days · ${forecast.timezone} · generated ${new Date(forecast.generatedAt).toLocaleString("en-IN")}`
-            : "Projected balance across the next 30 days"
+            : `Projected balance across the next ${horizon} days`
         }
       />
 
@@ -119,6 +175,31 @@ export default function CashFlowPage() {
         {error ? (
           <p className="text-[13px]" style={{ color: "var(--color-destructive)" }}>{error}</p>
         ) : null}
+
+        {/* §16 horizon. The projected-inflow share is shown beside it because
+            a longer horizon is not the same forecast drawn further — it is a
+            progressively larger share of extrapolation, and the two controls
+            belong next to each other. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="seg" role="group" aria-label="Forecast horizon">
+            {HORIZONS.map((h) => (
+              <button
+                key={h.days}
+                type="button"
+                className="seg-opt"
+                aria-pressed={horizon === h.days}
+                onClick={() => setHorizon(h.days)}
+              >
+                {h.label}
+              </button>
+            ))}
+          </div>
+          {forecast ? (
+            <span className="text-xs text-muted-foreground">
+              {forecast.projectedInflowSharePct}% of projected inflow is from orders not yet placed
+            </span>
+          ) : null}
+        </div>
 
         {/* The verdict, above the numbers rather than in a footnote. A reader
             who only looks at the top of this page must still see it. */}
@@ -140,9 +221,9 @@ export default function CashFlowPage() {
           </div>
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {loading ? (
-            [0, 1, 2, 3].map((i) => <MetricCardSkeleton key={i} />)
+            [0, 1, 2, 3, 4].map((i) => <MetricCardSkeleton key={i} />)
           ) : (
             <>
               <Metric
@@ -164,7 +245,11 @@ export default function CashFlowPage() {
                 }
               />
               <Metric
-                label={forecast?.reliability === "inflows_only" ? "Inflows only, in 30 days" : "Projected in 30 days"}
+                label={
+                  forecast?.reliability === "inflows_only"
+                    ? `Inflows only, in ${forecast.horizonDays} days`
+                    : `Projected in ${forecast?.horizonDays ?? horizon} days`
+                }
                 badge={<DataStatusBadge dataStatus={forecast?.dataStatus} />}
                 value={closing == null ? "—" : formatInrShort(closing)}
                 tone={verdict?.tone ?? "neutral"}
@@ -176,6 +261,29 @@ export default function CashFlowPage() {
                 value={forecast ? formatInrShort(paiseToRupees(forecast.totals.inflowMinor)) : "—"}
                 tone="neutral"
                 sub="Settlements and COD remittance from orders"
+              />
+              {/* §16 — the trough, not the endpoint. A line that dips below
+                  zero in week three and recovers by week twelve ends healthy
+                  and is still a crisis, so the closing balance alone cannot
+                  answer "will I run out". */}
+              <Metric
+                label="Lowest projected point"
+                badge={<DataStatusBadge dataStatus={forecast?.dataStatus} />}
+                value={forecast ? formatInrShort(paiseToRupees(forecast.lowestBalance.valueMinor)) : "—"}
+                tone={
+                  forecast?.cashShortageDate
+                    ? "negative"
+                    : forecast && Number(forecast.lowestBalance.valueMinor) < Number(forecast.openingBalance.valueMinor)
+                      ? "warning"
+                      : "neutral"
+                }
+                sub={
+                  forecast
+                    ? forecast.cashShortageDate
+                      ? `Goes negative on ${formatDay(forecast.cashShortageDate)}`
+                      : `On ${formatDay(forecast.lowestBalance.date)} · no shortage in this horizon`
+                    : ""
+                }
               />
               <Metric
                 label="Outflows expected"
@@ -231,7 +339,19 @@ export default function CashFlowPage() {
             value={`${formatInrShort(closing)} ${forecast.reliability === "inflows_only" ? "of inflows" : "projected"} on ${formatDay(lastDay.date)}`}
             confidence={verdict.confidence}
             series={series}
-            note={forecast.reliabilityNote}
+            // With a scenario on screen the legend has to be readable, so it
+            // is switched on only then — a single unlabelled line needs no key.
+            showLegend={Boolean(scenario)}
+            note={scenario ? scenario.scenario.reliabilityNote : forecast.reliabilityNote}
+          />
+        ) : null}
+
+        {forecast ? (
+          <ScenarioPanel
+            onRun={runScenario}
+            running={scenarioRunning}
+            result={scenario}
+            error={scenarioError}
           />
         ) : null}
 
@@ -244,7 +364,7 @@ export default function CashFlowPage() {
             <div style={{ overflowX: "auto" }}>
               <table className="table">
                 <thead>
-                  <tr><th>Component</th><th>Basis</th><th>Over 30 days</th><th>Why</th></tr>
+                  <tr><th>Component</th><th>Basis</th><th>{`Over ${forecast.horizonDays} days`}</th><th>Why</th></tr>
                 </thead>
                 <tbody>
                   {forecast.components.map((c) => (

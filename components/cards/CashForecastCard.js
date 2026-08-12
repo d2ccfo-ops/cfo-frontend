@@ -20,6 +20,10 @@ export default function CashForecastCard({
   note = "",
   chartTitle = "Projected balance",
   series,
+  // Off by default: a single unlabelled line needs no key. The cash-flow page
+  // turns it on when a scenario is overlaid and the two lines must be told
+  // apart.
+  showLegend = false,
 }) {
   const tag = TAG[confidence] || TAG.high;
   const tagClass =
@@ -37,7 +41,7 @@ export default function CashForecastCard({
         </div>
         <span className={`flex-none rounded-full px-2.5 py-1 text-xs font-medium ${tagClass}`}>{tag.label}</span>
       </div>
-      <FinancialChart title={chartTitle} kind="area" series={series || [{ name: "Projected balance", colorRole: "accent", points: [] }]} yFormat="currency" showLegend={false} height={160} />
+      <FinancialChart title={chartTitle} kind="area" series={series || [{ name: "Projected balance", colorRole: "accent", points: [] }]} yFormat="currency" showLegend={showLegend} height={160} />
       <p className="mb-0 mt-2 text-xs text-muted-foreground">{note}</p>
     </div>
   );
