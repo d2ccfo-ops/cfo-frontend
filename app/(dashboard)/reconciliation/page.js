@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import DateRangePicker from "@/components/controls/DateRangePicker";
@@ -60,6 +62,10 @@ export default function ReconciliationPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [writingOffId, setWritingOffId] = useState(null);
+  // §22 (P5.2). A write-off above the materiality threshold does not
+  // happen — it becomes a request. Held here so the table can say so
+  // rather than appearing to have done nothing.
+  const [approvalNotice, setApprovalNotice] = useState(null);
   const [restoringId, setRestoringId] = useState(null);
 
   const [filters, setFilters] = useState({
@@ -281,6 +287,32 @@ export default function ReconciliationPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ note: "Written off from the reconciliation table" }),
       });
+      const body = await res.json().catch(() => null);
+
+      // 202 means the server did NOT write anything off — the amount is above
+      // this organisation's materiality threshold, so §22 sent it to a second
+      // person instead. Patching the row as written-off here would show a
+      // decision that has not been made.
+      if (res.status === 202) {
+        setApprovalNotice({
+          orderNumber: row.orderNumber,
+          message: body?.message ?? "This write-off needs approval.",
+          requiredRole: body?.requiredRole ?? null,
+          riskLevel: body?.riskLevel ?? null,
+        });
+        return;
+      }
+
+      if (res.status === 409 && body?.error === "approval_pending") {
+        setApprovalNotice({
+          orderNumber: row.orderNumber,
+          message: body.message ?? "A write-off for this order is already waiting for approval.",
+          requiredRole: null,
+          riskLevel: null,
+        });
+        return;
+      }
+
       if (res.ok) {
         // Patched in place rather than refetching the page: the row's new state
         // is fully known, and reloading would jump a reader who has scrolled
@@ -390,6 +422,30 @@ export default function ReconciliationPage() {
 
   return (
     <>
+      {/* §22. A write-off above the threshold did NOT happen — it became a
+          request. Said plainly, because the alternative reading of a button
+          that changed nothing is that the button is broken. */}
+      {approvalNotice ? (
+        <div
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-accent-soft px-3.5 py-3 text-[13px] text-accent"
+          role="status"
+        >
+          <span>
+            <strong className="font-medium">Order {approvalNotice.orderNumber} was not written off.</strong>{" "}
+            {approvalNotice.message}
+            {approvalNotice.requiredRole ? ` It needs ${approvalNotice.requiredRole} or above to approve.` : ""}
+          </span>
+          <span className="flex items-center gap-3">
+            <Link href="/approvals" className="font-medium underline">
+              Open approvals
+            </Link>
+            <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-current" onClick={() => setApprovalNotice(null)}>
+              Dismiss
+            </button>
+          </span>
+        </div>
+      ) : null}
+
       <TopNav
         title="Reconciliation"
         // Every card and row below is scoped to this window, so it is named

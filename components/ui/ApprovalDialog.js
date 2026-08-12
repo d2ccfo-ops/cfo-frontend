@@ -8,8 +8,8 @@ export default function ApprovalDialog({
   description = "Confirm this transaction match before it posts to your ledger.",
   rows = [],
   onClose,
-  onApprove,
-  onReject,
+  onApprove = null,
+  onReject = null,
 }) {
   return (
     <Dialog.Root open={!!open} onOpenChange={(next) => !next && onClose?.()}>
@@ -28,12 +28,22 @@ export default function ApprovalDialog({
               ))}
             </div>
           </div>
+          {/* Approve and Reject are RENDERED ONLY when a handler exists. A
+              button that is present but inert reads as broken, and on a
+              screen whose whole purpose is "did someone sign this off", the
+              difference between "you cannot" and "it did not work" matters. */}
           <div className="dialog-actions">
-            <button className="btn btn-ghost" onClick={onReject} type="button">Reject</button>
+            {onReject ? (
+              <button className="btn btn-ghost" onClick={onReject} type="button">Reject</button>
+            ) : null}
             <Dialog.Close asChild>
-              <button className="btn btn-secondary" onClick={onClose} type="button">Cancel</button>
+              <button className="btn btn-secondary" onClick={onClose} type="button">
+                {onApprove || onReject ? "Cancel" : "Close"}
+              </button>
             </Dialog.Close>
-            <button className="btn btn-primary" onClick={onApprove} type="button">Approve</button>
+            {onApprove ? (
+              <button className="btn btn-primary" onClick={onApprove} type="button">Approve</button>
+            ) : null}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

@@ -22,6 +22,7 @@ export function Icon({ paths, size = 18, viewBox = "0 0 24 24", stroke = "curren
 }
 
 export const NAV_ICONS = {
+  approvals: '<path d="M12 3l7.5 3.2v5.1c0 4.4-3 8.2-7.5 9.7-4.5-1.5-7.5-5.3-7.5-9.7V6.2Z" fill="currentColor" fill-opacity="0.14" stroke-linejoin="round"/><path d="M9 12l2.2 2.2L15.5 10"/>',
   overview: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   dailyBrief: '<path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/><circle cx="12" cy="12" r="4" fill="currentColor" fill-opacity="0.18" stroke="none"/><circle cx="12" cy="12" r="4"/>',
   revenue: '<path d="M4 16l5-5 4 4 7-8" fill="none"/><path d="M14 7h6v6" fill="none"/>',
@@ -52,6 +53,7 @@ export const NAV_ORDER = [
   { key: "inventory", label: "Inventory", href: "/inventory" },
   { key: "costs", label: "Product costs", href: "/costs" },
   { key: "exceptions", label: "Exceptions", href: "/exceptions" },
+  { key: "approvals", label: "Approvals", href: "/approvals" },
 ];
 
 export const NAV_ORDER_2 = [
