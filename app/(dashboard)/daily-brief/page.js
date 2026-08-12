@@ -60,7 +60,7 @@ export default function DailyBriefPage() {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes] =
+        const [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes] =
           await Promise.all([
             fetch(`${api}/metrics/sales${dateQuery}`, authed),
             fetch(`${api}/metrics/revenue${dateQuery}`, authed),
@@ -71,9 +71,11 @@ export default function DailyBriefPage() {
             fetch(`${api}/metrics/freshness`, authed),
             fetch(`${api}/metrics/product-profitability${dateQuery}`, authed),
             fetch(`${api}/metrics/burn-runway`, authed),
+            // The COD position + money exceptions belong in a CFO brief.
+            fetch(`${api}/reconciliation/summary${dateQuery}`, authed),
           ]);
         if (cancelled) return;
-        const all = [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes];
+        const all = [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes];
         if (!all.some((r) => r.ok)) {
           setFailed(true);
           return;
@@ -88,6 +90,7 @@ export default function DailyBriefPage() {
           freshness: freshnessRes.ok ? await freshnessRes.json() : null,
           products: productsRes.ok ? await productsRes.json() : null,
           burn: burnRes.ok ? await burnRes.json() : null,
+          recon: reconRes.ok ? await reconRes.json() : null,
         });
         setToday(
           new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
@@ -167,6 +170,33 @@ export default function DailyBriefPage() {
             note={hasCash ? "Bank accounts only" : "Connect a bank account"}
             tone="neutral"
           />
+          {/* Profitability was entirely absent from the brief's headline tiles —
+              orders, revenue, RTO, cash, and not one word on margin. CM0 is the
+              first reliable rung of the ladder; the caveat says which rung. */}
+          <QuickMetric
+            loading={loading}
+            label="Gross margin (CM0)"
+            value={
+              data?.contribution?.levels?.cm0?.reliable
+                ? `${data.contribution.levels.cm0.marginPct}%`
+                : "No data"
+            }
+            note={
+              data?.contribution?.levels?.cm0?.reliable
+                ? `${formatInrShort(data.contribution.levels.cm0.value)} after COGS only`
+                : "Needs product costs"
+            }
+            tone={data?.contribution?.levels?.cm0?.reliable ? "positive" : "neutral"}
+          />
+          {(data?.recon?.codPosition ?? data?.recon?.cod)?.hasCourierData ? (
+            <QuickMetric
+              loading={loading}
+              label="COD gone dark"
+              value={formatInrShort(Number(((data.recon.codPosition ?? data.recon.cod).unknownValue).slice(0, -2) || "0"))}
+              note={`${(data.recon.codPosition ?? data.recon.cod).unknownCount.toLocaleString("en-IN")} parcels silent 30+ days — all-time`}
+              tone={(data.recon.codPosition ?? data.recon.cod).unknownCount > 0 ? "negative" : "positive"}
+            />
+          ) : null}
         </div>
 
         {/* "What changed overnight" needs yesterday's numbers to compare against
