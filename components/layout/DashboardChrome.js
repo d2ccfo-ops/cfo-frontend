@@ -8,9 +8,10 @@ import EntitySelector from "@/components/controls/EntitySelector";
 import DateRangePicker from "@/components/controls/DateRangePicker";
 import DataFreshnessBadge from "@/components/ui/DataFreshnessBadge";
 import { DateRangeProvider } from "@/components/controls/DateRangeContext";
-import { Icon, MENU_PATHS, SEARCH_PATHS, HELP_CIRCLE_PATHS, BELL_PATHS } from "@/components/icons";
+import { Icon, MENU_PATHS, SEARCH_PATHS, HELP_CIRCLE_PATHS } from "@/components/icons";
 import ExplainModeProvider, { useExplainMode } from "@/components/ui/ExplainMode";
 import DemoDataBanner from "@/components/layout/DemoDataBanner";
+import NotificationBell from "@/components/layout/NotificationBell";
 
 // The date-range provider wraps the whole shell because the picker that sets
 // it lives in this header while everything that reads it lives in {children}.
@@ -81,12 +82,10 @@ export default function DashboardChrome({ children }) {
             />
           </div>
           <ExplainModeButton />
-          <button
-            type="button"
-            className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted"
-          >
-            <Icon paths={BELL_PATHS} size={19} strokeWidth={1.6} />
-          </button>
+          {/* Was a decorative bell that rendered and did nothing. It now reads
+              GET /notifications, badges the server's unread count, and marks
+              rows read. */}
+          <NotificationBell />
           {/* Clerk's own control rather than the hardcoded "AK" initials this
               used to render — those belonged to nobody, and the one element in
               a header that should identify WHO you are signed in as must not
