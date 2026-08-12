@@ -9,6 +9,8 @@ import NoDataPanel from "@/components/ui/NoDataPanel";
 import ProfitabilityTable from "@/components/tables/ProfitabilityTable";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import { useDateRange } from "@/components/controls/DateRangeContext";
+import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
+import { fetchEvidence, evidenceToRows, downloadEvidenceCsv } from "@/lib/evidence";
 import { formatInrShort as rupeesShort } from "@/lib/money";
 
 // Every figure on this page comes from cfo-backend's /metrics/contribution-margin
@@ -48,6 +50,8 @@ export default function ProfitabilityPage() {
   const [products, setProducts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [serverEvidence, setServerEvidence] = useState(null);
 
   useEffect(() => {
     if (!dateReady) return;
@@ -82,6 +86,27 @@ export default function ProfitabilityPage() {
     };
   }, [getToken, dateQuery, dateKey, dateReady]);
 
+  // §21 evidence, fetched when the drawer first opens. Keyed by the period it
+  // was fetched for rather than reset in a separate effect: a period change
+  // makes serverEvidence.dateKey stale, which reads as "not yet fetched for
+  // this window" without a second setState-in-effect.
+  useEffect(() => {
+    if (!evidenceOpen || serverEvidence?.dateKey === dateKey) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        const env = await fetchEvidence(token, "contribution_margin", dateQuery);
+        if (!cancelled) setServerEvidence({ dateKey, envelope: env });
+      } catch {
+        /* drawer shows what it has */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [evidenceOpen, serverEvidence, getToken, dateQuery, dateKey]);
+
   const cm3 = contribution?.levels?.cm3;
   const cm0 = contribution?.levels?.cm0;
   const coverage = contribution?.cogsCoverage;
@@ -100,6 +125,11 @@ export default function ProfitabilityPage() {
       <TopNav
         title="Product profitability"
         subtitle={`Contribution margin by product · ${datePreset.toLowerCase()}`}
+        actions={
+          <button className="btn btn-secondary" type="button" onClick={() => setEvidenceOpen(true)}>
+            View evidence
+          </button>
+        }
       />
 
       <div className="flex flex-col gap-6">
@@ -323,6 +353,22 @@ export default function ProfitabilityPage() {
           href="/revenue"
         />
       </div>
+
+      <EvidenceDrawer
+        open={evidenceOpen}
+        title="Contribution margin"
+        sourceLabel="§21 evidence — the backend's own account of this figure"
+        rows={
+          serverEvidence?.dateKey === dateKey
+            ? evidenceToRows(serverEvidence.envelope)
+            : [{ label: "Loading", value: "Fetching evidence…" }]
+        }
+        onClose={() => setEvidenceOpen(false)}
+        onDownload={async () => {
+          const token = await getToken();
+          await downloadEvidenceCsv(token, "contribution_margin", dateQuery);
+        }}
+      />
     </>
   );
 }

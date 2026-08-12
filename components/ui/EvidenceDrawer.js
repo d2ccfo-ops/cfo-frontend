@@ -2,7 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 
-export default function EvidenceDrawer({ open, title = "Evidence", sourceLabel = "", rows = [], onClose }) {
+export default function EvidenceDrawer({ open, title = "Evidence", sourceLabel = "", rows = [], onClose, onDownload = null }) {
   return (
     <Dialog.Root open={!!open} onOpenChange={(next) => !next && onClose?.()}>
       <Dialog.Portal>
@@ -26,14 +26,28 @@ export default function EvidenceDrawer({ open, title = "Evidence", sourceLabel =
             </Dialog.Close>
           </div>
           <div className="flex-1 overflow-y-auto p-5">
-            {rows.map((r, i) => (
-              <div key={i} className="flex items-center justify-between gap-2.5 border-b border-border py-2.5 last:border-0">
-                <span className="text-[13px] text-muted-foreground">{r.label}</span>
-                <span className="text-[13.5px] font-medium text-foreground">{r.value}</span>
-              </div>
-            ))}
+            {rows.map((r, i) =>
+              // block rows stack label over value — a definition paragraph
+              // right-aligned against its label is unreadable.
+              r.block ? (
+                <div key={i} className="border-b border-border py-2.5 last:border-0">
+                  <div className="text-[13px] text-muted-foreground">{r.label}</div>
+                  <div className="mt-0.5 text-[13px] leading-relaxed text-foreground">{r.value}</div>
+                </div>
+              ) : (
+                <div key={i} className="flex items-center justify-between gap-2.5 border-b border-border py-2.5 last:border-0">
+                  <span className="text-[13px] text-muted-foreground">{r.label}</span>
+                  <span className="text-right text-[13.5px] font-medium text-foreground">{r.value}</span>
+                </div>
+              )
+            )}
           </div>
-          <div className="border-t border-border p-4 px-5">
+          <div className="flex gap-2.5 border-t border-border p-4 px-5">
+            {onDownload ? (
+              <button className="btn btn-secondary btn-block" onClick={onDownload}>
+                Download CSV
+              </button>
+            ) : null}
             <button className="btn btn-secondary btn-block" onClick={onClose}>
               Close
             </button>

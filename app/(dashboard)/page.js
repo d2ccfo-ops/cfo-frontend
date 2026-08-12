@@ -7,6 +7,7 @@ import TopNav from "@/components/layout/TopNav";
 import MetricCard from "@/components/ui/MetricCard";
 import MetricCardSkeleton from "@/components/ui/MetricCardSkeleton";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
+import { fetchEvidence, evidenceToRows, downloadEvidenceCsv } from "@/lib/evidence";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import AlertCard from "@/components/ui/AlertCard";
 import FinancialChart from "@/components/charts/FinancialChart";
@@ -235,8 +236,7 @@ function LiveProductTable({ title, subtitle, rows, loading, footnote }) {
 }
 
 export default function OverviewPage() {
-  const [drawer, setDrawer] = useState({ open: false, title: "", sourceLabel: "", rows: [] });
-  const openDrawer = (payload) => setDrawer({ open: true, ...payload });
+  const [drawer, setDrawer] = useState({ open: false, title: "", sourceLabel: "", rows: [], evidenceKey: null });
   const closeDrawer = () => setDrawer((d) => ({ ...d, open: false }));
 
   const { getToken } = useAuth();
@@ -265,6 +265,28 @@ export default function OverviewPage() {
   // the banner below say which one it is rather than showing the same blank.
   const [liveFailed, setLiveFailed] = useState(false);
   const { query: dateQuery, key: dateKey, preset: datePreset, ready: dateReady } = useDateRange();
+
+  // Local rows paint immediately; for the material metrics (evidenceKey set)
+  // the §21 server envelope is fetched and appended when it lands — the
+  // backend's verification status, live sources and underlying rows are facts
+  // only it can state. A failed fetch leaves the local rows, which are still
+  // true.
+  const openDrawer = (payload, evidenceKey = null) => {
+    setDrawer({ open: true, evidenceKey, ...payload });
+    if (!evidenceKey) return;
+    (async () => {
+      try {
+        const token = await getToken();
+        const env = await fetchEvidence(token, evidenceKey, dateQuery);
+        const serverRows = evidenceToRows(env, { includeText: false });
+        setDrawer((d) =>
+          d.open && d.evidenceKey === evidenceKey ? { ...d, rows: [...d.rows, ...serverRows] } : d
+        );
+      } catch {
+        /* local rows stand alone */
+      }
+    })();
+  };
 
   const [pinned, setPinned] = useState(METRICS_RAW);
   const [picker, setPicker] = useState(false);
@@ -468,6 +490,7 @@ export default function OverviewPage() {
       return {
         ...m,
         dataStatus: liveRevenue.dataStatus,
+        evidenceKey: "revenue",
         value: formatInrShort(liveRevenue.value),
         change: changeLabel,
         changeDirection,
@@ -668,6 +691,7 @@ export default function OverviewPage() {
           return {
             ...m,
             dataStatus: c.dataStatus,
+            evidenceKey: "contribution_margin",
             value: `${cm0.marginPct}%`,
             change: formatInrShort(cm0.value),
             changeDirection: "flat",
@@ -681,6 +705,7 @@ export default function OverviewPage() {
         return {
           ...m,
           dataStatus: c.dataStatus,
+          evidenceKey: "contribution_margin",
           value: "Not measurable",
           change: `${c.dataCompleteness}% of inputs`,
           changeDirection: "flat",
@@ -698,6 +723,7 @@ export default function OverviewPage() {
       return {
         ...m,
         dataStatus: c.dataStatus,
+        evidenceKey: "contribution_margin",
         value: `${cm3.marginPct}%`,
         change: formatInrShort(cm3.value),
         changeDirection: "flat",
@@ -975,6 +1001,7 @@ export default function OverviewPage() {
       return {
         ...m,
         dataStatus: liveCash.dataStatus,
+        evidenceKey: "cash_received",
         value: formatInrShort(liveCash.value),
         change: changeLabel,
         changeDirection,
@@ -1088,7 +1115,7 @@ export default function OverviewPage() {
                     {...m}
                     badge={<DataStatusBadge dataStatus={m.dataStatus} />}
                     label={forPeriod(m.label, datePreset)}
-                    onEvidence={() => openDrawer(m.evidence)}
+                    onEvidence={() => openDrawer(m.evidence, m.evidenceKey)}
                     onInfo={() => setInfo(m)}
                     onRemove={() => removeMetric(m.label)}
                     onDragStart={() => setDragLabel(m.label)}
@@ -1390,7 +1417,21 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      <EvidenceDrawer open={drawer.open} title={drawer.title} sourceLabel={drawer.sourceLabel} rows={drawer.rows} onClose={closeDrawer} />
+      <EvidenceDrawer
+        open={drawer.open}
+        title={drawer.title}
+        sourceLabel={drawer.sourceLabel}
+        rows={drawer.rows}
+        onClose={closeDrawer}
+        onDownload={
+          drawer.evidenceKey
+            ? async () => {
+                const token = await getToken();
+                await downloadEvidenceCsv(token, drawer.evidenceKey, dateQuery);
+              }
+            : null
+        }
+      />
     </>
   );
 }

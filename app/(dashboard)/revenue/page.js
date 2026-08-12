@@ -15,6 +15,7 @@ import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
 import Explain from "@/components/ui/Explain";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import { describeComparison } from "@/lib/period";
+import { fetchEvidence, evidenceToRows, downloadEvidenceCsv } from "@/lib/evidence";
 
 // Every figure on this page comes from GET /metrics/revenue-ladder, which
 // implements §5–§11 of the CFOOS Backend Finance Engine spec. Nothing here is
@@ -92,6 +93,10 @@ export default function RevenuePage() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  // §21 server evidence, fetched when the drawer first opens — the rung
+  // definitions below are static, but verification status, sources and the
+  // underlying orders only the backend can state.
+  const [serverEvidence, setServerEvidence] = useState(null);
 
   useEffect(() => {
     // Held until the stored date selection has been read back, so a reload
@@ -123,6 +128,26 @@ export default function RevenuePage() {
       cancelled = true;
     };
   }, [getToken, dateQuery, dateKey, dateReady]);
+
+  // Keyed by the period it was fetched for rather than reset in a separate
+  // effect: a period change makes serverEvidence.dateKey stale, which reads
+  // as "not yet fetched for this window" without a second setState-in-effect.
+  useEffect(() => {
+    if (!evidenceOpen || serverEvidence?.dateKey === dateKey) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        const env = await fetchEvidence(token, "revenue", dateQuery);
+        if (!cancelled) setServerEvidence({ dateKey, envelope: env });
+      } catch {
+        /* the static definition rows still render */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [evidenceOpen, serverEvidence, getToken, dateQuery, dateKey]);
 
   const ladder = data?.ladder;
   // Both windows in words, so the percentages above can be checked.
@@ -559,8 +584,16 @@ export default function RevenuePage() {
           { label: "Refunds (§13/§14)", value: "Only successful refund transactions — Shopify voids move no money and are excluded" },
           { label: "Finality (§90)", value: `${data?.status ?? "—"} — nothing here is reconciled to a settlement or bank credit yet` },
           { label: "Completeness (§89)", value: `${data?.dataCompleteness ?? "—"}%` },
+          // §21 server evidence: verification status, live sources and the
+          // first underlying orders. includeText: false — the rungs above
+          // already define the metric.
+          ...(serverEvidence?.dateKey === dateKey ? evidenceToRows(serverEvidence.envelope, { includeText: false }) : []),
         ]}
         onClose={() => setEvidenceOpen(false)}
+        onDownload={async () => {
+          const token = await getToken();
+          await downloadEvidenceCsv(token, "revenue", dateQuery);
+        }}
       />
     </>
   );
