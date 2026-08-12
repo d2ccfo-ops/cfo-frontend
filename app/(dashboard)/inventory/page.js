@@ -270,6 +270,19 @@ export default function InventoryPage() {
       />
 
       <div className="flex flex-col gap-6">
+        {/* P6.1/P6.2. Variants reporting placeholder quantities — the number a
+            store sets so an untracked item never blocks a sale — are excluded
+            from the valuation. Said here rather than silently applied: this
+            page previously showed ₹2,274 crore of inventory for a business
+            doing about ₹1 crore of revenue, computed correctly from rows
+            nobody sanity-checked. If the threshold is wrong for this business,
+            the founder needs to see that we disagreed. */}
+        {(liveInventoryValue?.warnings ?? []).map((w, i) => (
+          <div key={i} className="rounded-md bg-accent-soft px-3.5 py-3 text-[13px] leading-relaxed text-accent" role="status">
+            {w}
+          </div>
+        ))}
+
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {liveInventoryValue ? (
             <Metric
