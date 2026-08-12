@@ -52,6 +52,7 @@ export default function CashFlowPage() {
   const [forecast, setForecast] = useState(null);
   const [availableCash, setAvailableCash] = useState(null);
   const [payables, setPayables] = useState(null);
+  const [burn, setBurn] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -61,16 +62,21 @@ export default function CashFlowPage() {
       try {
         const token = await getToken();
         const headers = { Authorization: `Bearer ${token}` };
-        const [forecastRes, cashRes, payablesRes] = await Promise.all([
+        const [forecastRes, cashRes, payablesRes, burnRes] = await Promise.all([
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/cash-forecast`, { headers }),
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/available-cash`, { headers }),
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/payables`, { headers }),
+          // Runway is the number a founder acts on from THIS screen — it was
+          // rendered on exceptions and daily-brief but absent from the one
+          // page that is actually about cash.
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/burn-runway`, { headers }),
         ]);
         if (cancelled) return;
         if (forecastRes.ok) setForecast(await forecastRes.json());
         else setError("Couldn't load the cash forecast.");
         if (cashRes.ok) setAvailableCash(await cashRes.json());
         if (payablesRes.ok) setPayables(await payablesRes.json());
+        if (burnRes.ok) setBurn(await burnRes.json());
       } catch {
         if (!cancelled) setError("Couldn't reach the backend.");
       } finally {
@@ -150,7 +156,10 @@ export default function CashFlowPage() {
                 sub={
                   forecast?.openingBalance.basis === "measured"
                     ? "Bank balance across connected accounts"
-                    : "Set an opening balance on a bank connection"
+                    : (availableCash?.missingOpeningBalance?.length ?? 0) > 0
+                      ? // Which account to fix, not just that one needs fixing.
+                        `${availableCash.missingOpeningBalance.length} bank connection${availableCash.missingOpeningBalance.length === 1 ? " needs" : "s need"} an opening balance — Connections page`
+                      : "Set an opening balance on a bank connection"
                 }
               />
               <Metric
@@ -184,6 +193,33 @@ export default function CashFlowPage() {
             </>
           )}
         </div>
+
+        {/* §55/§85 — burn and runway. A founder acts on runway from exactly
+            this screen; it lived only on exceptions and the daily brief. */}
+        {!loading && burn ? (
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Metric
+              label="Monthly net burn"
+              value={burn.burning ? formatInrShort(burn.monthlyNetBurn) : "Not burning"}
+              change={`${burn.observedDays} days observed · ${burn.transactionCount} bank transactions`}
+              tone={burn.burning ? "warning" : "positive"}
+              sub={burn.burning ? "Outflows exceed inflows on the observed window" : "Inflows cover outflows on the observed window"}
+            />
+            <Metric
+              label="Runway"
+              value={burn.runwayMonths != null ? `${burn.runwayMonths} months` : "—"}
+              tone={burn.runwayMonths != null && burn.runwayMonths < 6 ? "negative" : "neutral"}
+              sub={burn.runwayReason}
+            />
+            <Metric
+              label="Net movement (observed)"
+              value={formatInrShort(burn.netMovement)}
+              change={`in ${formatInrShort(burn.inflow)} · out ${formatInrShort(burn.outflow)}`}
+              tone={burn.netMovement >= 0 ? "positive" : "warning"}
+              sub={(burn.warnings ?? [])[0] ?? "From imported bank transactions"}
+            />
+          </div>
+        ) : null}
 
         {series ? (
           <CashForecastCard
