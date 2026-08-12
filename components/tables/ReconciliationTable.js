@@ -117,8 +117,11 @@ export default function ReconciliationTable({
   onEvidence,
   onWriteOff,
   onRestore,
+  onPair,
+  onUnpair,
   writingOffId = null,
   restoringId = null,
+  unpairingId = null,
 }) {
   const set = (key) => (e) => onFilterChange({ ...filters, [key]: e.target.value });
 
@@ -246,6 +249,22 @@ export default function ReconciliationTable({
                       {/* Only offered where it means something. Writing off a
                           matched order, or one that is merely waiting on a
                           courier, would record a decision nobody made. */}
+                      {/* P6.3. Offered alongside write-off and listed FIRST,
+                          because it is almost always the right action of the
+                          two: an unmatched order is far more often a payment
+                          the engine could not connect than money that will
+                          never arrive. Putting write-off first would make
+                          destroying the receivable the path of least
+                          resistance. */}
+                      {r.status === "unmatched" ? (
+                        <button
+                          className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-primary"
+                          onClick={() => onPair?.(r)}
+                          type="button"
+                        >
+                          Pair payment
+                        </button>
+                      ) : null}
                       {r.status === "unmatched" ? (
                         <button
                           className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-muted-foreground"
@@ -254,6 +273,20 @@ export default function ReconciliationTable({
                           disabled={writingOffId === r.id}
                         >
                           {writingOffId === r.id ? "Saving…" : "Write off"}
+                        </button>
+                      ) : null}
+                      {/* A manual pairing is a decision, so it has to be
+                          reversible by the same route it was made. Shown only
+                          where one exists — MANUAL confidence with a payment
+                          behind it, which a write-off (null target) is not. */}
+                      {r.confidence === "MANUAL" && r.status !== "written_off" ? (
+                        <button
+                          className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-muted-foreground"
+                          onClick={() => onUnpair?.(r)}
+                          type="button"
+                          disabled={unpairingId === r.id}
+                        >
+                          {unpairingId === r.id ? "Undoing…" : "Unpair"}
                         </button>
                       ) : null}
                       {/* A decision must be reversible. Undo deletes the

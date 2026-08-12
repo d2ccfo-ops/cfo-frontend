@@ -11,6 +11,7 @@ import Metric from "@/components/ui/Metric";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import ReconciliationTable, { formatPaise } from "@/components/tables/ReconciliationTable";
 import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
+import PairDialog from "@/components/ui/PairDialog";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 
 // Reconciliation answers "did the money arrive", which is a different question
@@ -67,6 +68,10 @@ export default function ReconciliationPage() {
   // rather than appearing to have done nothing.
   const [approvalNotice, setApprovalNotice] = useState(null);
   const [restoringId, setRestoringId] = useState(null);
+  // P6.3. Manual pairing — the row being paired, and the row whose pairing
+  // is being undone.
+  const [pairRow, setPairRow] = useState(null);
+  const [unpairingId, setUnpairingId] = useState(null);
 
   const [filters, setFilters] = useState({
     searchInput: "",
@@ -253,6 +258,37 @@ export default function ReconciliationPage() {
       setSummaryError("Couldn't reach the backend.");
     } finally {
       setRunning(false);
+    }
+  }
+
+  // P6.3. Pairing does not patch the row from a known new state the way
+  // write-off does — the server re-derives status, confidence and the settled
+  // column together, and guessing at "matched" here could disagree with what a
+  // reload shows.
+  async function handlePaired() {
+    const refreshedSummary = await fetchSummary();
+    if (refreshedSummary.data) setSummary(refreshedSummary.data);
+    // Refetch from page one rather than patching: the server re-derives
+    // status, confidence and the settled column together, and a guess here
+    // could disagree with what a reload shows.
+    setReloadKey((k) => k + 1);
+  }
+
+  async function handleUnpair(row) {
+    setUnpairingId(row.id);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/reconciliation/items/${row.id}/unpair`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const refreshedSummary = await fetchSummary();
+        if (refreshedSummary.data) setSummary(refreshedSummary.data);
+        await reload();
+      }
+    } finally {
+      setUnpairingId(null);
     }
   }
 
@@ -587,8 +623,11 @@ export default function ReconciliationPage() {
               onEvidence={openEvidence}
               onWriteOff={handleWriteOff}
               onRestore={handleRestore}
+              onPair={(r) => setPairRow(r)}
+              onUnpair={handleUnpair}
               writingOffId={writingOffId}
               restoringId={restoringId}
+              unpairingId={unpairingId}
             />
             <div ref={sentinelRef} />
             {loadingMore ? (
@@ -609,6 +648,13 @@ export default function ReconciliationPage() {
         sourceLabel={drawer.sourceLabel}
         rows={drawer.rows}
         onClose={() => setDrawer((d) => ({ ...d, open: false }))}
+      />
+
+      <PairDialog
+        open={pairRow !== null}
+        row={pairRow}
+        onClose={() => setPairRow(null)}
+        onPaired={handlePaired}
       />
     </>
   );
