@@ -3,10 +3,12 @@
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
+import RecurringCosts from "@/components/settings/RecurringCosts";
 import ThemePicker from "@/components/ui/ThemeToggle";
 
 const TABS = [
   { key: "org", label: "Organisation" },
+  { key: "fixedCosts", label: "Fixed costs" },
   { key: "preferences", label: "Preferences" },
   { key: "billing", label: "Billing" },
   { key: "notifications", label: "Notifications" },
@@ -45,6 +47,13 @@ export default function SettingsPage() {
 
         <div className="min-w-0 flex-1">
           {tab === "org" ? <OrganisationTab /> : null}
+
+          {tab === "fixedCosts" ? (
+            <>
+              <h4 className="mb-4 text-lg font-medium text-foreground">Fixed costs</h4>
+              <RecurringCosts />
+            </>
+          ) : null}
 
           {tab === "preferences" ? (
             <>
