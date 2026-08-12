@@ -26,10 +26,16 @@ import { formatInrShort as rupeesShort } from "@/lib/money";
 function toTableRow(p) {
   return {
     name: p.productName,
+    // Net of returns (§13) — a product returned as often as it sells must not
+    // read as a bestseller.
+    units: p.units,
     revenue: rupeesShort(p.netRevenue),
     cogs: p.cogs === null ? "—" : rupeesShort(p.cogs),
     contribution: p.cm0 === null ? "—" : rupeesShort(p.cm0),
     marginPct: p.cm0Pct ?? 0,
+    // null when the SKU had no gross revenue in the period — that is "no
+    // basis", not 0%.
+    refundRatePct: p.refundRatePct,
   };
 }
 

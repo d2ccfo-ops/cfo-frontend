@@ -460,7 +460,11 @@ export default function ReconciliationPage() {
               value={formatPaise(codPos.deliveredValue)}
               change={`${codPos.deliveredCount.toLocaleString("en-IN")} delivered`}
               tone="warning"
-              sub={`Awaiting remittance · in flight ${formatPaise(codPos.inFlightValue)} · RTO ${formatPaise(codPos.rtoValue)} never collected`}
+              sub={`Awaiting remittance · in flight ${formatPaise(codPos.inFlightValue)} · RTO ${formatPaise(codPos.rtoValue)} never collected${
+                codPos.onlineDepositsValue && codPos.onlineDepositsValue !== "0"
+                  ? ` · ${formatPaise(codPos.onlineDepositsValue)} PPCOD deposits already captured online (netted out)`
+                  : ""
+              }`}
             />
           ) : (
             <Metric
@@ -608,6 +612,26 @@ function LegBreakdown({ legs, live = false, freight = null }) {
                   <div>
                     {freight.returnLegCount.toLocaleString("en-IN")} return-leg charges (RTO),{" "}
                     {formatPaise(freight.returnLegPaise)} — parcels billed twice.
+                  </div>
+                ) : null}
+                {/* Credit lines are stored negative; shown as the positive
+                    amount the courier gave back, which is how the founder
+                    reads their invoice. */}
+                {freight.creditCount > 0 ? (
+                  <div>
+                    {freight.creditCount.toLocaleString("en-IN")} credit note line
+                    {freight.creditCount === 1 ? "" : "s"},{" "}
+                    {formatPaise(String(freight.creditPaise).replace("-", ""))} credited back by the courier.
+                  </div>
+                ) : null}
+                {/* The invoice window bounds every freight number above it: a
+                    shipment outside these dates isn't unmatched, it's simply
+                    from a month whose invoice hasn't been uploaded. */}
+                {freight.earliestShipDate && freight.latestShipDate ? (
+                  <div>
+                    Invoices cover shipments from{" "}
+                    {new Date(freight.earliestShipDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })} to{" "}
+                    {new Date(freight.latestShipDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })} — shipments outside this window have no invoice on file yet.
                   </div>
                 ) : null}
                 {/* Coverage per carrier. Without it, "8,000 unmatched" reads as

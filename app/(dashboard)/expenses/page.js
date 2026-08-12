@@ -227,6 +227,37 @@ export default function ExpensesPage() {
 
         <div className="gcard p-5">
           <div className="mb-2.5 text-base font-medium text-foreground">Upcoming vendor bills</div>
+          {/* The full ageing ladder. The two cards above show only the ends of
+              it (overdue, due-in-7); the middle buckets are where a payables
+              problem builds before it becomes an overdue number. */}
+          {!loading && hasPayables && (payables.ageing ?? []).length > 0 ? (
+            <div className="mb-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              {payables.ageing.map((b) => (
+                <div key={b.key} className="rounded-md bg-muted/50 px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-[0.05em] text-muted-foreground">{b.label}</div>
+                  <div
+                    className="text-[15px] font-medium tabular-nums"
+                    style={b.key === "overdue" && b.count > 0 ? { color: "var(--color-destructive)" } : undefined}
+                  >
+                    {rupeesShort(b.amount)}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {b.count.toLocaleString("en-IN")} bill{b.count === 1 ? "" : "s"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {/* The backend states its own blind spots (multi-currency totals,
+              bills with no due date); hiding them would make the ladder above
+              read as complete when it is not. */}
+          {!loading && hasPayables && (payables.warnings ?? []).length > 0 ? (
+            <div className="mb-3 flex flex-col gap-1">
+              {payables.warnings.map((w) => (
+                <p key={w} className="text-[12px]" style={{ color: "var(--color-accent)" }}>{w}</p>
+              ))}
+            </div>
+          ) : null}
           {loading ? (
             <table className="table">
               <thead>

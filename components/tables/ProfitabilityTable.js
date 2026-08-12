@@ -21,16 +21,18 @@ export default function ProfitabilityTable({
             {/* Every column except the name is a derived number, so every one
                 of them says how it was derived. */}
             <th>{nameHeader}</th>
+            <th>Units</th>
             <th><Explain term="col-revenue">Revenue</Explain></th>
             <th><Explain term="col-cogs">COGS</Explain></th>
             <th><Explain term="col-contribution">Contribution</Explain></th>
             <th><Explain term="col-margin">Margin</Explain></th>
+            <th>Refund %</th>
           </tr>
         </thead>
         {/* Skeleton rows rather than an empty body: an empty table under a
             populated header reads as "you have no products", which is a claim,
             not a loading state. */}
-        {loading ? <TableSkeleton rows={5} columns={5} /> : null}
+        {loading ? <TableSkeleton rows={5} columns={7} /> : null}
         {loading ? null : <tbody>
           {rows.map((r, i) => {
             const isNeg = r.marginPct < 0;
@@ -39,6 +41,9 @@ export default function ProfitabilityTable({
             return (
               <tr key={i}>
                 <td>{r.name}</td>
+                {/* Units are net of returns; undefined means the caller predates
+                    the column, which renders as an em dash, not a zero. */}
+                <td>{r.units != null ? r.units.toLocaleString("en-IN") : "—"}</td>
                 <td>{r.revenue}</td>
                 <td>{r.cogs}</td>
                 <td>{r.contribution}</td>
@@ -52,12 +57,24 @@ export default function ProfitabilityTable({
                     </span>
                   </div>
                 </td>
+                {/* null = no gross revenue in the period to compute a rate
+                    from; a high rate is flagged because it eats the margin the
+                    previous column just claimed. */}
+                <td>
+                  {r.refundRatePct == null ? (
+                    "—"
+                  ) : (
+                    <span style={r.refundRatePct >= 5 ? { color: "var(--color-destructive)" } : undefined}>
+                      {r.refundRatePct}%
+                    </span>
+                  )}
+                </td>
               </tr>
             );
           })}
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={5} className="py-6 text-center text-muted-foreground">{emptyMessage}</td>
+              <td colSpan={7} className="py-6 text-center text-muted-foreground">{emptyMessage}</td>
             </tr>
           ) : null}
         </tbody>}

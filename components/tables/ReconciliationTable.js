@@ -153,6 +153,25 @@ export default function ReconciliationTable({
         ) : null}
       </div>
 
+      {/* The Settled column's blind spot, stated once above the table instead
+          of inferred row by row: how many gateway payouts are on file and the
+          dates they span. An order outside this window showing "—" is a
+          missing statement, not a missing payment. */}
+      {statementCoverage?.payoutCount ? (
+        <p className="mb-2 text-[12px] text-muted-foreground">
+          Settled amounts come from {statementCoverage.payoutCount.toLocaleString("en-IN")} imported payout
+          {statementCoverage.payoutCount === 1 ? "" : "s"}
+          {statementCoverage.earliest && statementCoverage.latest ? (
+            <>
+              {" "}covering{" "}
+              {new Date(statementCoverage.earliest).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })} to{" "}
+              {new Date(statementCoverage.latest).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}
+            </>
+          ) : null}
+          {" "}— orders outside that window can&apos;t show a settlement yet.
+        </p>
+      ) : null}
+
       <div style={{ overflowX: "auto" }}>
         <table className="table">
           <thead>

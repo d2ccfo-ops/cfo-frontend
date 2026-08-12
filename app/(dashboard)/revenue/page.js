@@ -266,7 +266,18 @@ export default function RevenuePage() {
                   value={pctLabel(data?.refunds?.revenueRefundRatePct)}
                   change={rateChangeLabel(data?.refunds?.revenueRefundRatePct, data?.refunds?.priorRevenueRefundRatePct)}
                   tone={rateTone(data?.refunds?.revenueRefundRatePct, data?.refunds?.priorRevenueRefundRatePct)}
-                  sub={`${pctLabel(data?.refunds?.orderRefundRatePct)} of orders · by value; denominator is recognised, not delivered, orders`}
+                  sub={
+                    // The rupees behind the rate — a rate alone can't say
+                    // whether 4% is ₹40 or ₹4 lakh walking back out the door.
+                    data?.refunds?.value != null ? (
+                      <>
+                        <AbbrCurrency value={data.refunds.value} /> refunded · {pctLabel(data?.refunds?.orderRefundRatePct)} of
+                        orders · denominator is recognised, not delivered, orders
+                      </>
+                    ) : (
+                      `${pctLabel(data?.refunds?.orderRefundRatePct)} of orders · by value; denominator is recognised, not delivered, orders`
+                    )
+                  }
                 />
                 <Metric
                   label="Cancellation rate · §67"
@@ -350,6 +361,39 @@ export default function RevenuePage() {
               })}
             </div>
           )}
+
+          {/* §104 cross-check against Shopify's "Sales over time" report, in
+              Shopify's own column names. The backend verified these tie to the
+              live store to the paisa; rendering them lets the founder run the
+              same check without knowing which rung maps to which column. */}
+          {data?.shopifyEquivalent ? (
+            <div className="mt-4 border-t border-border pt-3">
+              <div className="text-[13px] font-medium text-foreground">Cross-check with Shopify</div>
+              <div className="mb-2 text-[11px] text-muted-foreground">{data.shopifyEquivalent.note}</div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  { key: "grossSales", label: "Gross sales" },
+                  { key: "netSales", label: "Net sales" },
+                  { key: "totalSales", label: "Total sales" },
+                ].map((c) => {
+                  const cell = data.shopifyEquivalent[c.key];
+                  return cell ? (
+                    <div key={c.key} className="rounded-md bg-muted/50 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-[0.05em] text-muted-foreground">{c.label}</div>
+                      <div className="text-[15px] font-medium tabular-nums text-foreground">
+                        <AbbrCurrency value={cell.value} />
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">= {cell.maps_to}</div>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+              <div className="mt-1.5 text-[11px] text-muted-foreground">
+                {data.shopifyEquivalent.orders?.toLocaleString("en-IN")} orders — matches Shopify&apos;s order count for
+                the same dates.
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
@@ -434,12 +478,12 @@ export default function RevenuePage() {
             ) : (
               <div className="flex flex-col gap-4">
                 {[
-                  { label: "COD", countPct: data?.paymentMix?.codPct, valuePct: data?.paymentMix?.codValuePct, count: data?.paymentMix?.codCount },
+                  { label: "COD", countPct: data?.paymentMix?.codPct, valuePct: data?.paymentMix?.codValuePct, count: data?.paymentMix?.codCount, value: data?.paymentMix?.codValue?.value },
                   // prepaidValuePct comes from the backend rather than being
                   // derived as `100 − codValuePct`: that subtraction turns a
                   // null denominator into a confident "100% of value" when
                   // there are no orders at all.
-                  { label: "Prepaid", countPct: data?.paymentMix?.prepaidPct, valuePct: data?.paymentMix?.prepaidValuePct, count: data?.paymentMix?.prepaidCount },
+                  { label: "Prepaid", countPct: data?.paymentMix?.prepaidPct, valuePct: data?.paymentMix?.prepaidValuePct, count: data?.paymentMix?.prepaidCount, value: data?.paymentMix?.prepaidValue?.value },
                 ].map((m) => (
                   <div key={m.label}>
                     <div className="mb-1 flex items-baseline justify-between text-[13px]">
@@ -451,7 +495,17 @@ export default function RevenuePage() {
                     <div className="h-2 overflow-hidden rounded-[3px] bg-muted">
                       <div className="h-full rounded-[3px] bg-primary" style={{ width: `${m.countPct ?? 0}%` }} />
                     </div>
-                    <div className="mt-1 text-[11px] text-muted-foreground">{(m.count ?? 0).toLocaleString("en-IN")} orders</div>
+                    {/* The rupees, not just the split — "48% of value" and the
+                        ₹ it stands for are different facts, and COD's number is
+                        the one riding on couriers. */}
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {(m.count ?? 0).toLocaleString("en-IN")} orders
+                      {m.value != null ? (
+                        <>
+                          {" "}· <AbbrCurrency value={m.value} /> net order value
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
                 {data?.paymentMix?.unknownCount > 0 ? (
