@@ -1,26 +1,470 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ==========================================================================
+   CFOOS console theme — ported from the ai-cfo-design reference
+   (Firebase / Google Cloud console design language). Light by default,
+   `.dark` class flips to the evening-sky navy palette. All colors use
+   oklch so both apps render identically. Registered under Tailwind v4's
+   @theme so `var(--color-primary)` and `bg-primary`/`text-primary`
+   resolve to the same values.
+   ========================================================================== */
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: var(--font-sans);
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+
+  /* Back-compat aliases — direction-agnostic single tokens that a handful
+     of not-yet-restyled files still reference via bg-bg/bg-surface/text-text
+     /border-divider/font-heading/font-body. Safe in both themes. */
+  --color-bg: var(--background);
+  --color-surface: var(--card);
+  --color-text: var(--foreground);
+  --color-divider: var(--border);
+  --font-heading: var(--font-sans);
+  --font-body: var(--font-sans);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.962 0.002 247);
+  --foreground: oklch(0.264 0.006 285);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.264 0.006 285);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.264 0.006 285);
+  --primary: oklch(0.567 0.184 261);
+  --primary-foreground: oklch(1 0 0);
+  --primary-soft: oklch(0.949 0.026 259);
+  --secondary: oklch(0.968 0.002 247);
+  --secondary-foreground: oklch(0.35 0.008 285);
+  --muted: oklch(0.968 0.002 247);
+  --muted-foreground: oklch(0.51 0.008 285);
+  --accent: oklch(0.72 0.171 57);
+  --accent-foreground: oklch(1 0 0);
+  --accent-soft: oklch(0.965 0.035 80);
+  --success: oklch(0.55 0.128 152);
+  --success-soft: oklch(0.955 0.035 155);
+  --destructive: oklch(0.55 0.196 28.5);
+  --destructive-foreground: oklch(1 0 0);
+  --destructive-soft: oklch(0.958 0.024 25);
+  --border: oklch(0.885 0.004 265);
+  --input: oklch(0.885 0.004 265);
+  --ring: oklch(0.567 0.184 261);
+  --chart-1: oklch(0.567 0.184 261);
+  --chart-2: oklch(0.72 0.171 57);
+  --chart-3: oklch(0.55 0.128 152);
+  --chart-4: oklch(0.55 0.196 28.5);
+  --chart-5: oklch(0.62 0.13 300);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.35 0.008 285);
+  --sidebar-primary: oklch(0.567 0.184 261);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.949 0.026 259);
+  --sidebar-accent-foreground: oklch(0.5 0.17 261);
+  --sidebar-border: oklch(0.885 0.004 265);
+  --sidebar-ring: oklch(0.567 0.184 261);
+  --font-sans:
+    "Google Sans", "Google Sans Text", var(--font-roboto), Roboto, -apple-system, "Segoe UI",
+    sans-serif;
+  --shadow-card: 0 1px 2px 0 rgb(60 64 67 / 0.08), 0 1px 3px 1px rgb(60 64 67 / 0.06);
+  --shadow-raised: 0 1px 3px 0 rgb(60 64 67 / 0.15), 0 4px 8px 3px rgb(60 64 67 / 0.08);
+}
+
+.dark {
+  --background: oklch(0.203 0.048 265);
+  --foreground: oklch(0.955 0.008 250);
+  --card: oklch(0.253 0.05 266);
+  --card-foreground: oklch(0.955 0.008 250);
+  --popover: oklch(0.253 0.05 266);
+  --popover-foreground: oklch(0.955 0.008 250);
+  --primary: oklch(0.72 0.145 258);
+  --primary-foreground: oklch(0.18 0.045 265);
+  --primary-soft: oklch(0.32 0.062 264);
+  --secondary: oklch(0.29 0.05 265);
+  --secondary-foreground: oklch(0.95 0.008 250);
+  --muted: oklch(0.29 0.05 265);
+  --muted-foreground: oklch(0.755 0.028 258);
+  --accent: oklch(0.79 0.145 62);
+  --accent-foreground: oklch(0.2 0.045 265);
+  --accent-soft: oklch(0.325 0.058 70);
+  --success: oklch(0.75 0.135 158);
+  --success-soft: oklch(0.31 0.055 160);
+  --destructive: oklch(0.71 0.16 24);
+  --destructive-foreground: oklch(0.19 0.045 265);
+  --destructive-soft: oklch(0.32 0.07 24);
+  --border: oklch(0.345 0.045 265);
+  --input: oklch(0.345 0.045 265);
+  --ring: oklch(0.72 0.145 258);
+  --chart-1: oklch(0.72 0.145 258);
+  --chart-2: oklch(0.79 0.145 62);
+  --chart-3: oklch(0.75 0.135 158);
+  --chart-4: oklch(0.71 0.16 24);
+  --chart-5: oklch(0.74 0.13 300);
+  --sidebar: oklch(0.228 0.05 266);
+  --sidebar-foreground: oklch(0.93 0.01 250);
+  --sidebar-primary: oklch(0.72 0.145 258);
+  --sidebar-primary-foreground: oklch(0.19 0.045 265);
+  --sidebar-accent: oklch(0.3 0.055 264);
+  --sidebar-accent-foreground: oklch(0.95 0.008 250);
+  --sidebar-border: oklch(0.345 0.045 265);
+  --sidebar-ring: oklch(0.72 0.145 258);
+  --shadow-card: 0 1px 2px 0 rgb(4 8 24 / 0.5), 0 1px 3px 1px rgb(4 8 24 / 0.35);
+  --shadow-raised: 0 2px 6px 0 rgb(4 8 24 / 0.55), 0 8px 20px 3px rgb(4 8 24 / 0.4);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@utility gcard {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* ==========================================================================
+   Legacy hand-rolled classes — still used directly by several pages
+   (settings, connections, onboarding, reports, ai-cfo, team, expenses).
+   Redefined here to match the reference's Button/Card/DataTable recipes
+   from ai-cfo-design/src/components/console.tsx so those pages pick up
+   the new look without per-page JSX changes.
+   ========================================================================== */
+.btn {
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--color-foreground);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.btn svg {
+  display: block;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--color-primary) 90%, transparent);
+}
+.btn-secondary {
+  border-color: var(--color-border);
+  color: var(--color-primary);
+}
+.btn-secondary:hover {
+  background: var(--color-primary-soft);
+}
+.btn-ghost {
+  color: var(--color-primary);
+  border-color: transparent;
+  padding-inline: 12px;
+}
+.btn-ghost:hover {
+  background: var(--color-primary-soft);
+}
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+.btn-block {
+  width: 100%;
+}
+
+/* — forms — */
+.field > label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--color-muted-foreground);
+}
+.input {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--color-foreground);
+  caret-color: var(--color-primary);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.input::placeholder {
+  color: var(--color-muted-foreground);
+  opacity: 1;
+}
+.input:hover {
+  border-color: color-mix(in srgb, var(--color-foreground) 30%, var(--color-border));
+}
+.input:focus-visible {
+  border-color: var(--color-primary);
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+  outline-offset: 0;
+}
+textarea.input {
+  min-height: 90px;
+  resize: vertical;
+}
+.seg {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.seg-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+.seg-opt + .seg-opt {
+  border-left: 1px solid var(--color-border);
+}
+.seg-opt:has(input:checked),
+.seg-opt[aria-pressed="true"] {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+.seg-opt:not(:has(input:checked)):hover {
+  background: var(--color-muted);
+}
+.seg-opt input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* — cards — */
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+.card-kicker {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+.card-title {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.3;
+}
+.card-body {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-muted-foreground);
+}
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-muted-foreground);
+}
+.elev-sm {
+  box-shadow: var(--shadow-card);
+}
+.elev-md {
+  box-shadow: var(--shadow-card);
+}
+.elev-lg {
+  box-shadow: var(--shadow-raised);
+}
+
+/* — tables — */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+.table td {
+  padding: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+.table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-muted) 60%, transparent);
+}
+
+/* — dialog — */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--color-foreground) 45%, transparent);
+}
+.dialog {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: var(--radius-xl);
+  background: var(--color-card);
+  box-shadow: var(--shadow-raised);
+}
+.dialog-title {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 18px;
+  color: var(--color-foreground);
+}
+.dialog-body {
+  font-size: 14px;
+  color: var(--color-muted-foreground);
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ==========================================================================
+   App-specific hover states — real :hover instead of the source's
+   inline `style-hover` template attribute. The reference's cards are flat
+   (no hover elevation) and its inline actions use text/underline or a
+   primary-soft wash, so nothing here re-introduces a raised card state.
+   ========================================================================== */
+.alert-card__action:hover {
+  background: var(--color-primary-soft);
+}
+
+/* ==========================================================================
+   "What's this?" mode — the ? in the header.
+   Driven by a single body class rather than per-element props, so the ~70
+   pickable elements don't each have to subscribe to the mode's context and
+   re-render when it toggles.
+   ========================================================================== */
+body.explain-mode,
+body.explain-mode * {
+  cursor: help !important;
+}
+/* Reveals everything that can answer for itself. This is the point of the
+   mode: the affordances stay quiet in normal use because seventy dotted
+   underlines is a page nobody can read, and appear all at once when asked. */
+body.explain-mode [data-explain-term] {
+  outline: 1px dashed color-mix(in srgb, var(--color-primary) 65%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+body.explain-mode [data-explain-term]:hover {
+  outline: 2px solid var(--color-primary);
+  background: var(--color-primary-soft);
+}
+/* A nested pickable (a status badge inside a card) must read as the more
+   specific target on hover, not compete with the card around it. */
+body.explain-mode [data-explain-term] [data-explain-term]:hover {
+  outline-offset: 1px;
 }
