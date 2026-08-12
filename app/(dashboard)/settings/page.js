@@ -3,6 +3,7 @@
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
+import SecurityPanel from "@/components/settings/SecurityPanel";
 import RecurringCosts from "@/components/settings/RecurringCosts";
 import ThemePicker from "@/components/ui/ThemeToggle";
 
@@ -109,20 +110,7 @@ export default function SettingsPage() {
             </>
           ) : null}
 
-          {tab === "security" ? (
-            <>
-              <h4 className="mb-4 text-lg font-medium text-foreground">Security</h4>
-              {/* This tab used to show a segmented control with "Enabled"
-                  pre-selected for two-factor auth. It was reading nothing and
-                  setting nothing — a false claim that an account is protected
-                  is more dangerous than any wrong number on this product. */}
-              <p className="text-[13.5px] text-muted-foreground">
-                Sign-in, passwords and two-factor authentication are handled by Clerk, not stored here. Open the
-                account menu in the top-right and choose <strong className="font-medium text-foreground">Manage account</strong> to
-                see and change them — including whether two-factor is actually on.
-              </p>
-            </>
-          ) : null}
+          {tab === "security" ? <SecurityPanel /> : null}
 
           {tab === "dataPrivacy" ? (
             <>
