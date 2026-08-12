@@ -30,6 +30,7 @@ export default function ExpensesPage() {
   const [adSpend, setAdSpend] = useState(null);
   const [payables, setPayables] = useState(null);
   const [contribution, setContribution] = useState(null);
+  const [adEfficiency, setAdEfficiency] = useState(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   // Captured when the data lands rather than read during render: `new Date()`
@@ -47,10 +48,11 @@ export default function ExpensesPage() {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [adRes, payRes, cRes] = await Promise.all([
+        const [adRes, payRes, cRes, effRes] = await Promise.all([
           fetch(`${api}/metrics/ad-spend${dateQuery}`, authed),
           fetch(`${api}/metrics/payables`, authed),
           fetch(`${api}/metrics/contribution-margin${dateQuery}`, authed),
+          fetch(`${api}/metrics/ad-efficiency${dateQuery}`, authed),
         ]);
         if (cancelled) return;
         if (!adRes.ok && !payRes.ok && !cRes.ok) {
@@ -60,6 +62,7 @@ export default function ExpensesPage() {
         setAdSpend(adRes.ok ? await adRes.json() : null);
         setPayables(payRes.ok ? await payRes.json() : null);
         setContribution(cRes.ok ? await cRes.json() : null);
+        setAdEfficiency(effRes.ok ? await effRes.json() : null);
         setAsOfDate(new Date().toISOString().slice(0, 10));
       } catch {
         if (!cancelled) setFailed(true);
@@ -130,7 +133,10 @@ export default function ExpensesPage() {
               <Metric
                 label="Product cost (COGS)"
                 value={hasCogs ? rupeesShort(cogsLayer.amount) : "No data"}
-                change={cogsCoverage ? `${cogsCoverage.valueCoveragePct}% of lines costed` : "Enter product costs"}
+                // "% of line VALUE" — this figure weights by rupees, not row
+                // count; calling it "lines" overstated nothing but confused
+                // anyone comparing it to the Costs page's line coverage.
+                change={cogsCoverage ? `${cogsCoverage.valueCoveragePct}% of line value costed` : "Enter product costs"}
                 tone={cogsCoverage && cogsCoverage.valueCoveragePct >= 95 ? "positive" : "warning"}
                 sub={
                   hasCogs
@@ -155,6 +161,62 @@ export default function ExpensesPage() {
             </>
           )}
         </div>
+
+        {/* Marketing efficiency + per-platform split. ROAS/CAC were computed
+            all along and rendered only on the Overview; a founder deciding
+            where next month's budget goes does it from THIS page. The split
+            states Google's absence explicitly instead of folding it into a
+            blended total that reads as "all platforms accounted for". */}
+        {!loading && hasAdSpend ? (
+          <div className="gcard p-5">
+            <div className="mb-2.5 text-base font-medium text-foreground">Marketing efficiency</div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <div className="text-[12px] uppercase tracking-[0.06em] text-muted-foreground">ROAS</div>
+                <div className="text-xl font-semibold text-foreground">
+                  {adEfficiency?.roas != null ? `${adEfficiency.roas}x` : "—"}
+                </div>
+                <div className="text-[12px] text-muted-foreground">
+                  {adEfficiency?.incomparableCurrency
+                    ? "Ad account bills in a non-INR currency — ratio withheld rather than computed across currencies"
+                    : "Net revenue per rupee of ad spend"}
+                </div>
+              </div>
+              <div>
+                <div className="text-[12px] uppercase tracking-[0.06em] text-muted-foreground">Blended CAC</div>
+                <div className="text-xl font-semibold text-foreground">
+                  {adEfficiency?.blendedCac != null ? rupeesShort(adEfficiency.blendedCac) : "—"}
+                </div>
+                <div className="text-[12px] text-muted-foreground">Ad spend per order, all orders — not per new customer</div>
+              </div>
+              <div>
+                <div className="text-[12px] uppercase tracking-[0.06em] text-muted-foreground">Spend in period</div>
+                <div className="text-xl font-semibold text-foreground">
+                  {adSpend.mixedCurrency ? "Multiple currencies" : rupeesShort(adSpend.value)}
+                </div>
+                <div className="text-[12px] text-muted-foreground">{adSpend.dayCount} account-days of data</div>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-col">
+              {(adSpend.byProvider ?? []).map((p) => (
+                <div key={p.provider} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border py-2 last:border-0">
+                  <span className="text-[13px] text-foreground">{p.provider === "META_ADS" ? "Meta Ads" : p.provider === "GOOGLE_ADS" ? "Google Ads" : p.provider}</span>
+                  {p.dayCount > 0 ? (
+                    <span className="text-[13px] text-muted-foreground">
+                      <span className="font-medium text-foreground">{p.mixedCurrency ? "Multiple currencies" : rupeesShort(p.value)}</span>
+                      {" · "}{p.impressions.toLocaleString("en-IN")} impressions · {p.clicks.toLocaleString("en-IN")} clicks
+                      {p.impressions > 0 ? ` · ${((p.clicks / p.impressions) * 100).toFixed(2)}% CTR` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-[13px]" style={{ color: "var(--color-accent)" }}>
+                      no data — {p.provider === "GOOGLE_ADS" ? "re-export with the Day segment and upload" : "not connected"}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <NoDataPanel
           title="Expenses by category"
