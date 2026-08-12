@@ -238,13 +238,44 @@ export default function CostsPage() {
       />
 
       <div className="flex flex-col gap-6">
-        <div className="grid gap-4 sm:grid-cols-3">
+        {/* The single most important fact on this page: coverage said "94.7%
+            costed" while every one of those costs was a fabricated placeholder.
+            A margin resting entirely on estimates must never look verified. */}
+        {coverage?.estimatedSkuCount > 0 ? (
+          <div
+            className="rounded-lg border px-4 py-3 text-[13px]"
+            style={{
+              borderColor: "var(--color-accent)",
+              background: "var(--color-accent-soft)",
+              color: "var(--color-foreground)",
+            }}
+            role="alert"
+          >
+            <strong className="font-medium">
+              {coverage.estimatedSkuCount === coverage.costedSkuCount
+                ? `Every costed SKU (${coverage.estimatedSkuCount.toLocaleString("en-IN")} of ${coverage.costedSkuCount.toLocaleString("en-IN")}) carries a placeholder estimate — 0 verified.`
+                : `${coverage.estimatedSkuCount.toLocaleString("en-IN")} of ${coverage.costedSkuCount.toLocaleString("en-IN")} costed SKUs carry a placeholder estimate.`}
+            </strong>{" "}
+            Every margin the app shows is an estimate until real costs replace them. Paste real costs below — a real
+            cost automatically supersedes the estimate for that SKU. Wipe all estimates:{" "}
+            <code>npx tsx scripts/seedEstimatedCosts.ts --wipe</code> in cfo-backend.
+          </div>
+        ) : null}
+
+        <div className="grid gap-4 sm:grid-cols-4">
           <Metric
             label="Value coverage"
             value={coverage ? `${coverage.valueCoveragePct}%` : "—"}
             change={coverage ? `${coverage.lineCoveragePct}% of lines` : ""}
             tone={coverage?.valueCoveragePct >= 95 ? "positive" : "warning"}
             sub="Contribution margin stays INCOMPLETE below 95%"
+          />
+          <Metric
+            label="Verified costs"
+            value={coverage ? (coverage.costedSkuCount - coverage.estimatedSkuCount).toLocaleString("en-IN") : "—"}
+            change={coverage ? `${coverage.estimatedSkuCount.toLocaleString("en-IN")} estimated` : ""}
+            tone={coverage && coverage.estimatedSkuCount === 0 ? "positive" : "warning"}
+            sub="SKUs whose current cost was actually entered, not seeded"
           />
           <Metric
             label="SKUs missing a cost"
@@ -256,7 +287,11 @@ export default function CostsPage() {
             label="Order lines costed"
             value={coverage ? `${coverage.costedLines.toLocaleString("en-IN")} / ${coverage.totalLines.toLocaleString("en-IN")}` : "—"}
             tone="neutral"
-            sub="Cost is snapshot onto each line at the order's date (§19)"
+            sub={
+              coverage?.uncostableLineCount > 0
+                ? `${coverage.uncostableLineCount.toLocaleString("en-IN")} lines have no SKU and can never be costed — the reason coverage caps below 100%`
+                : "Cost is snapshot onto each line at the order's date (§19)"
+            }
           />
         </div>
 
@@ -343,10 +378,10 @@ export default function CostsPage() {
 
           <table className="table">
             <thead>
-              <tr><th>SKU</th><th>Product</th><th>Revenue</th><th>Units</th><th>Avg. selling price</th><th>Landed cost (₹)</th></tr>
+              <tr><th>SKU</th><th>Product</th><th>Revenue</th><th>Units</th><th>Avg. selling price</th><th>Landed cost (₹)</th><th>Source</th></tr>
             </thead>
             {loadingSkus ? (
-              <TableSkeleton rows={8} columns={6} />
+              <TableSkeleton rows={8} columns={7} />
             ) : (
               <tbody>
                 {(skus ?? []).map((s) => {
@@ -372,12 +407,24 @@ export default function CostsPage() {
                           className="w-28 rounded-md border border-border bg-card px-2 py-1 text-[13px] text-foreground outline-none focus:border-primary disabled:opacity-40"
                         />
                       </td>
+                      {/* Whether the number on file is real or the seeded
+                          placeholder — invisible before, which made 741
+                          fabricated costs look like entered data. */}
+                      <td>
+                        {s.costSource == null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : s.costSource === "ESTIMATED" ? (
+                          <span className="text-[11.5px] font-medium" style={{ color: "var(--color-accent)" }}>estimate</span>
+                        ) : (
+                          <span className="text-[11.5px] text-muted-foreground">{s.costSource.toLowerCase().replace("_", " ")}</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
                 {(skus?.length ?? 0) === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-6 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-6 text-center text-muted-foreground">
                       {search
                         ? `No SKU matches "${search}"${skuStatus === "missing" ? " among those without a cost" : ""}.`
                         : skuStatus === "missing"
@@ -392,7 +439,7 @@ export default function CostsPage() {
           {skuHasMore ? (
             <tfoot>
               <tr>
-                <td colSpan={6} className="py-3 text-center">
+                <td colSpan={7} className="py-3 text-center">
                   <button type="button" className="btn btn-secondary" onClick={loadMoreSkus} disabled={loadingMoreSkus}>
                     {loadingMoreSkus ? "Loading…" : `Load ${Math.min(SKU_PAGE_SIZE, skuTotal - (skus?.length ?? 0))} more`}
                   </button>
