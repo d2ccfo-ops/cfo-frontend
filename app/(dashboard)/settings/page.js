@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
 import SecurityPanel from "@/components/settings/SecurityPanel";
 import RecurringCosts from "@/components/settings/RecurringCosts";
+import PackagingCost from "@/components/settings/PackagingCost";
 import ThemePicker from "@/components/ui/ThemeToggle";
 
 const TABS = [
@@ -53,6 +54,11 @@ export default function SettingsPage() {
             <>
               <h4 className="mb-4 text-lg font-medium text-foreground">Fixed costs</h4>
               <RecurringCosts />
+              {/* Packaging lives here rather than under Preferences because it
+                  is the same kind of thing as the entries above: a cost the
+                  founder knows and no connected system reports. */}
+              <h4 className="mt-8 mb-4 text-lg font-medium text-foreground">Packaging rate</h4>
+              <PackagingCost />
             </>
           ) : null}
 

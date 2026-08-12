@@ -268,10 +268,21 @@ export default function ProfitabilityPage() {
                   <div className="min-w-0">
                     <span className="text-[13px] text-foreground">{l.label}</span>
                     <span className="ml-2 text-[11.5px] text-muted-foreground">{l.spec}</span>
+                    {/* A memo is measured but NOT subtracted — its rupees are
+                        already inside the layers above it. Without this label a
+                        reader adds it to the deductions and cannot make the
+                        column reconcile, which reads as a bug in the page. */}
+                    {l.memo ? (
+                      <span className="ml-2 rounded border border-border px-1.5 py-0.5 text-[10.5px] uppercase tracking-wide text-muted-foreground">
+                        not deducted
+                      </span>
+                    ) : null}
                   </div>
                   <div className="text-[13px]">
                     {l.hasSource ? (
-                      <span className="text-foreground">{rupeesShort(l.amount)}</span>
+                      <span className={l.memo ? "text-muted-foreground" : "text-foreground"}>{rupeesShort(l.amount)}</span>
+                    ) : l.memo ? (
+                      <span className="text-muted-foreground">not measurable</span>
                     ) : (
                       <span style={{ color: "var(--color-accent)" }}>no data source — treated as ₹0</span>
                     )}
