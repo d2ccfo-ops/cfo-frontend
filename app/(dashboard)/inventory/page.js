@@ -236,6 +236,9 @@ export default function InventoryPage() {
       name: p.title,
       units: units.toLocaleString("en-IN"),
       valueRaw: Number(valueMinor) / 100,
+      // The velocity that produced every days-of-cover figure — hidden before,
+      // which left "34 days" unverifiable at a glance.
+      sold30d: (p.unitsSoldTrailing30d ?? 0).toLocaleString("en-IN"),
       cover: formatDaysOfCover(p.daysOfCover),
       tone: display.tone,
       label: display.label,
@@ -295,13 +298,23 @@ export default function InventoryPage() {
             <Metric label="Avg. days of cover" value="No data" change={metricsFailed ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={metricsFailed ? "The request to cfo-backend failed" : "Stock on hand ÷ daily sales velocity"} />
           )}
           {liveCover ? (
-            <Metric
-              label="SKUs at risk of stockout"
-              value={`${liveCover.skusAtStockoutRisk.count} SKUs`}
-              change="Within 14 days"
-              tone={liveCover.skusAtStockoutRisk.count > 0 ? "negative" : "positive"}
-              sub="Live, real sales velocity"
-            />
+            // Clickable: the card names a count, the click shows the SKUs
+            // behind it — before, the specific at-risk products were only
+            // reachable by knowing to use the status dropdown.
+            <button
+              type="button"
+              className="text-left"
+              onClick={() => setStatusFilter("stockout_risk")}
+              title="Show these SKUs in the table below"
+            >
+              <Metric
+                label="SKUs at risk of stockout"
+                value={`${liveCover.skusAtStockoutRisk.count} SKUs`}
+                change="Within 14 days"
+                tone={liveCover.skusAtStockoutRisk.count > 0 ? "negative" : "positive"}
+                sub="Live, real sales velocity — click to list them below"
+              />
+            </button>
           ) : (
             <Metric label="SKUs at risk of stockout" value="No data" change={metricsFailed ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={metricsFailed ? "The request to cfo-backend failed" : "SKUs with under 14 days of cover"} />
           )}
@@ -359,23 +372,23 @@ export default function InventoryPage() {
 
           <table className="table">
             <thead>
-              <tr><th>Product</th><th>Units on hand</th><th>Inventory value</th><th>Days of cover</th><th>Status</th></tr>
+              <tr><th>Product</th><th>Units on hand</th><th>Units sold (30d)</th><th>Inventory value</th><th>Days of cover</th><th>Status</th></tr>
             </thead>
             {/* null means "not loaded yet" (as opposed to [] = loaded and
                 genuinely empty), which is the state that shows skeletons. */}
             {liveProducts === null ? (
-              <TableSkeleton rows={8} columns={5} />
+              <TableSkeleton rows={8} columns={6} />
             ) : (
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id}>
-                    <td>{r.name}</td><td>{r.units}</td><td><AbbrCurrency value={r.valueRaw} /></td><td>{r.cover}</td>
+                    <td>{r.name}</td><td>{r.units}</td><td>{r.sold30d}</td><td><AbbrCurrency value={r.valueRaw} /></td><td>{r.cover}</td>
                     <td><StatusBadge status={r.tone} label={r.label} term={r.term} /></td>
                   </tr>
                 ))}
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-6 text-center text-muted-foreground">
                       {loadFailed
                         ? "Couldn't load products. Check that the backend is running."
                         : isFiltering
