@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
 import AlertCard from "@/components/ui/AlertCard";
 import NoDataPanel from "@/components/ui/NoDataPanel";
+import ExceptionTaxonomy from "@/components/cards/ExceptionTaxonomy";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import { toAlerts } from "@/lib/anomalies";
 import { deriveSystemHealth } from "@/lib/insights";
@@ -60,7 +61,7 @@ export default function ExceptionsPage() {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [anomaliesRes, ladderRes, contributionRes, freshnessRes, burnRes, reconRes] = await Promise.all([
+        const [anomaliesRes, ladderRes, contributionRes, freshnessRes, burnRes, reconRes, taxonomyRes] = await Promise.all([
           // §17 anomalies. Not date-filtered: the engine runs on its own
           // trailing-28-day window and stores the period on each row, so
           // scoping this to the page's picker would silently hide findings
@@ -73,9 +74,14 @@ export default function ExceptionsPage() {
           // Money-shaped exceptions (dark COD, unmatched payments, freight
           // orphans) live in the reconciliation summary.
           fetch(`${api}/reconciliation/summary${dateQuery}`, authed),
+          // P6.4. The §15 taxonomy — eleven named kinds of reconciliation
+          // exception, derived server-side. Distinct from the anomalies
+          // above: an anomaly is a metric that MOVED, an exception is money
+          // whose whereabouts do not add up.
+          fetch(`${api}/reconciliation/exceptions${dateQuery}`, authed),
         ]);
         if (cancelled) return;
-        if (![anomaliesRes, ladderRes, contributionRes, freshnessRes, burnRes, reconRes].some((r) => r.ok)) {
+        if (![anomaliesRes, ladderRes, contributionRes, freshnessRes, burnRes, reconRes, taxonomyRes].some((r) => r.ok)) {
           setFailed(true);
           return;
         }
@@ -86,6 +92,7 @@ export default function ExceptionsPage() {
           freshness: freshnessRes.ok ? await freshnessRes.json() : null,
           burn: burnRes.ok ? await burnRes.json() : null,
           recon: reconRes.ok ? await reconRes.json() : null,
+          taxonomy: taxonomyRes.ok ? await taxonomyRes.json() : null,
         });
       } catch {
         if (!cancelled) setFailed(true);
@@ -190,6 +197,13 @@ export default function ExceptionsPage() {
             <NoDataPanel reason={`No ${tab} alerts in this period.`} />
           )}
         </div>
+
+        {/* P6.4. Below the alerts, because an alert is something that
+            changed and needs reading now, while these are a standing
+            ledger of what does not add up. The severity tabs above
+            deliberately do NOT filter this — the taxonomy is complete or
+            it is misleading. */}
+        <ExceptionTaxonomy report={payloads?.taxonomy ?? null} loading={loading} />
       </div>
     </>
   );
