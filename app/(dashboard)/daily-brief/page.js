@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
 import AlertCard from "@/components/ui/AlertCard";
+import BriefNarrativeCard from "@/components/cards/BriefNarrativeCard";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
@@ -49,6 +50,11 @@ export default function DailyBriefPage() {
   const { query: dateQuery, key: dateKey, preset: datePreset, ready: dateReady } = useDateRange();
 
   const [data, setData] = useState(null);
+  // P4.5's narrative. Its own state, its own request, its own failure mode:
+  // the deterministic brief must render in full whether or not a model wrote
+  // anything, so a failure here can never blank the page.
+  const [brief, setBrief] = useState(null);
+  const [briefLoading, setBriefLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   // Formatted when the data lands, not during render — `new Date()` in a render
@@ -105,8 +111,22 @@ export default function DailyBriefPage() {
         setToday(
           new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
         );
+        // Read, never generated: GET /ai/daily-brief returns what the nightly
+        // sweep wrote. A page load that could trigger a model call would make
+        // the first person in each morning wait for one.
+        try {
+          const briefRes = await fetch(`${api}/ai/daily-brief`, authed);
+          if (!cancelled && briefRes.ok) setBrief(await briefRes.json());
+        } catch {
+          /* the narrative is commentary; the numbers below stand on their own */
+        } finally {
+          if (!cancelled) setBriefLoading(false);
+        }
       } catch {
-        if (!cancelled) setFailed(true);
+        if (!cancelled) {
+          setFailed(true);
+          setBriefLoading(false);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -151,6 +171,11 @@ export default function DailyBriefPage() {
             this is a connection failure, not a quiet day.
           </div>
         ) : null}
+
+        {/* Above the tiles, because it is the sentence a founder reads first
+            on their phone — and below the connection error, because when the
+            backend is unreachable there is no narrative either. */}
+        {!failed ? <BriefNarrativeCard brief={brief} loading={briefLoading} /> : null}
 
         <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
           <QuickMetric
