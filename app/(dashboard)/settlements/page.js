@@ -103,7 +103,11 @@ export default function SettlementsPage() {
     [getToken, lines, openId]
   );
 
-  const cod = summary?.cod;
+  // The all-time position, NOT the period block. What a courier is holding is
+  // a position ("where is the money right now"), and scoping it to the date
+  // picker made the default month-to-date view report ₹0 of unknown COD while
+  // ₹72.2L of parcels sat silent — none of those orders were placed this month.
+  const cod = summary?.codPosition ?? summary?.cod;
   const hasCourierData = cod?.hasCourierData === true;
   const totals = payouts?.totals;
   const hasPayouts = (totals?.allTime?.count ?? 0) > 0;
@@ -159,7 +163,13 @@ export default function SettlementsPage() {
                     : "Import a statement"
                 }
                 tone={hasPayouts ? "positive" : "neutral"}
-                sub={hasPayouts ? "Net of provider fees, this period" : "No gateway statement imported yet"}
+                // The all-time figure sits alongside the window's, so a narrow
+                // picker (the default month) can't hide 26 of 37 payouts.
+                sub={
+                  hasPayouts
+                    ? `Net of provider fees, this period · all-time ${totals.allTime.count.toLocaleString("en-IN")} payouts, ${formatPaise(totals.allTime.netAmount)}`
+                    : "No gateway statement imported yet"
+                }
               />
               <Metric
                 label="Provider fees"
