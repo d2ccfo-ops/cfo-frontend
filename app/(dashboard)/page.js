@@ -1254,15 +1254,14 @@ export default function OverviewPage() {
               footnote="Revenue is recognised at order placement (§8); cash is matched bank credit (§44). The gap is settlement lag."
             />
           </div>
-          {/* Contribution margin over time needs COGS on historical orders.
-              With costs missing it would draw a flat 100% line, which looks
-              like a spectacular business rather than absent data. */}
+          {/* Costs now exist (estimated), so the blocker is no longer cost
+              entry — it's that margins are computed on demand and no daily
+              series is stored yet. Saying "needs product costs" here after
+              741 SKUs were costed would send the user to fix a solved problem. */}
           <NoDataPanel
             term="chart-margin-trend"
             title="Contribution margin trend"
-            reason="Needs product costs before a margin can be plotted."
-            action="Add costs"
-            href="/costs"
+            reason="No historical margin series is stored yet — margin is computed on demand for the selected period, so there is nothing to plot over time. Turns on once daily metric snapshots are written."
           />
         </div>
 

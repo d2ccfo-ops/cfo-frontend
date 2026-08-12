@@ -122,20 +122,36 @@ export default function ProfitabilityPage() {
             <>
               {/* CM3 is what a founder means by "contribution margin". Shown as a
                   percentage ONLY when the backend says every layer beneath it is
-                  covered — an unreliable 87% is far more damaging than a blank. */}
+                  covered — an unreliable 87% is far more damaging than a blank.
+                  But when CM3 is blocked and CM0 is reliable, the card shows
+                  gross margin plainly named as such: hiding a measured CM0
+                  behind "Not measurable" claimed margins were unknowable while
+                  the largest cost layer was already on file. */}
               <Metric
-                label="Contribution margin (CM3)"
-                value={cm3?.reliable ? `${cm3.marginPct}%` : "Not measurable"}
+                label={cm3?.reliable ? "Contribution margin (CM3)" : cm0?.reliable ? "Gross margin (CM0)" : "Contribution margin (CM3)"}
+                value={cm3?.reliable ? `${cm3.marginPct}%` : cm0?.reliable ? `${cm0.marginPct}%` : "Not measurable"}
                 change={contribution ? `${contribution.dataCompleteness}% of inputs` : "No data"}
                 tone={cm3?.reliable ? "positive" : "warning"}
-                sub={cm3?.reliable ? "After COGS, fulfilment, fees and ads" : marginBlockedReason}
+                sub={
+                  cm3?.reliable
+                    ? "After COGS, fulfilment, fees and ads"
+                    : cm0?.reliable
+                      ? `After COGS only — full CM blocked: ${marginBlockedReason.toLowerCase()}`
+                      : marginBlockedReason
+                }
               />
               <Metric
-                label="Contribution profit"
-                value={cm3?.reliable ? rupeesShort(cm3.value) : "Not measurable"}
+                label={cm3?.reliable ? "Contribution profit" : cm0?.reliable ? "Gross profit (CM0)" : "Contribution profit"}
+                value={cm3?.reliable ? rupeesShort(cm3.value) : cm0?.reliable ? rupeesShort(cm0.value) : "Not measurable"}
                 change={contribution?.status ?? "No data"}
                 tone={cm3?.reliable ? "positive" : "warning"}
-                sub={cm3?.reliable ? "Net revenue less every costed layer" : marginBlockedReason}
+                sub={
+                  cm3?.reliable
+                    ? "Net revenue less every costed layer"
+                    : cm0?.reliable
+                      ? "Net revenue less product cost — shipping, fees and ads still to come off"
+                      : marginBlockedReason
+                }
               />
               {/* Always honest and always available: this is a measurement of how
                   much we can measure. */}
@@ -160,6 +176,70 @@ export default function ProfitabilityPage() {
             </>
           )}
         </div>
+
+        {/* §36's layered ladder, rendered at last — the backend has computed
+            CM0→CM3 with a per-layer breakdown all along, and this page showed
+            none of it. Reliable levels get their %; unreliable ones show the
+            value with an explicit caveat instead of a percentage, because the
+            missing layers only subtract — the true number is LOWER. */}
+        {!loading && contribution?.levels ? (
+          <div className="gcard p-5">
+            <div className="mb-1 text-base font-medium text-foreground">The margin ladder</div>
+            <p className="mb-3 text-[12.5px] text-muted-foreground">
+              Net revenue {rupeesShort(contribution.netRevenue.value)} minus each cost layer in §36 order.
+              A level marked incomplete is an overstatement — its missing layers only subtract.
+            </p>
+            <div className="flex flex-col">
+              {["cm0", "cm1", "cm2", "cm3"].map((k) => {
+                const lvl = contribution.levels[k];
+                if (!lvl) return null;
+                return (
+                  <div
+                    key={k}
+                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border py-2.5 last:border-0"
+                  >
+                    <div className="min-w-0">
+                      <span className="text-[13.5px] font-medium text-foreground">{lvl.label}</span>
+                      <span className="ml-2 text-[12px] text-muted-foreground">{lvl.includes}</span>
+                    </div>
+                    <div className="text-[13.5px]">
+                      <span className="font-medium text-foreground">{rupeesShort(lvl.value)}</span>
+                      {lvl.reliable ? (
+                        <span className="ml-2" style={{ color: "var(--color-primary)" }}>{lvl.marginPct}%</span>
+                      ) : (
+                        <span className="ml-2 text-[12px]" style={{ color: "var(--color-accent)" }}>
+                          incomplete — true figure is lower
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Every layer, including the ones with no source yet — a founder
+                deciding whether to trust CM3 needs to see exactly which costs
+                are real and which are still zeros. */}
+            <div className="mt-4 mb-2 text-[13px] font-medium text-foreground">Cost layers behind it</div>
+            <div className="flex flex-col">
+              {(contribution.layers ?? []).map((l) => (
+                <div key={l.key} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border py-2 last:border-0">
+                  <div className="min-w-0">
+                    <span className="text-[13px] text-foreground">{l.label}</span>
+                    <span className="ml-2 text-[11.5px] text-muted-foreground">{l.spec}</span>
+                  </div>
+                  <div className="text-[13px]">
+                    {l.hasSource ? (
+                      <span className="text-foreground">{rupeesShort(l.amount)}</span>
+                    ) : (
+                      <span style={{ color: "var(--color-accent)" }}>no data source — treated as ₹0</span>
+                    )}
+                    {l.note ? <span className="ml-2 text-[11.5px] text-muted-foreground">{l.note}</span> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {/* The margin trend chart used to plot six invented months. A real trend
             needs a stored daily/monthly series, and MetricSnapshot is only
