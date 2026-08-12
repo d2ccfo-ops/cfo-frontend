@@ -369,6 +369,8 @@ export default function ReconciliationPage() {
 
   const auto = summary?.autoMatched;
   const byStatus = summary?.byStatus;
+  // All-time COD position; falls back to the period block if the API predates it.
+  const codPos = summary?.codPosition ?? summary?.cod;
   const channels = summary?.channels ?? [];
   const hasInvoiced = (byStatus?.invoiced?.count ?? 0) > 0;
 
@@ -388,9 +390,18 @@ export default function ReconciliationPage() {
         // here rather than left to the reader to infer from a pill elsewhere.
         subtitle={`Trace every order through to money actually received · ${periodLabel}`}
         actions={
-          <button className="btn btn-primary" type="button" onClick={handleRun} disabled={running}>
-            {running ? "Running…" : "Run reconciliation"}
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Without this, the always-present chain below can be mistaken for
+                stale output of some long-ago run. */}
+            {summary?.lastRunAt ? (
+              <span className="text-[12px] text-muted-foreground">
+                last run {new Date(summary.lastRunAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            ) : null}
+            <button className="btn btn-primary" type="button" onClick={handleRun} disabled={running}>
+              {running ? "Running…" : "Run reconciliation"}
+            </button>
+          </div>
         }
       />
 
@@ -439,18 +450,17 @@ export default function ReconciliationPage() {
           {/* With shipment data, the headline is the money the courier has
               ALREADY COLLECTED — that is the cash someone else is holding.
               All-COD-outstanding as the headline would bury it inside a much
-              larger number that is mostly parcels still on trucks. */}
-          {summary?.cod?.hasCourierData ? (
+              larger number that is mostly parcels still on trucks.
+              COD cards read codPosition (all-time), not the period-scoped cod
+              block: what a courier holds is a position, and scoping it to the
+              picker made the default month show ₹0 over ₹72L of silent parcels. */}
+          {codPos?.hasCourierData ? (
             <Metric
               label="COD collected by courier"
-              value={summary ? formatPaise(summary.cod.deliveredValue) : "—"}
-              change={summary ? `${summary.cod.deliveredCount.toLocaleString("en-IN")} delivered` : undefined}
+              value={formatPaise(codPos.deliveredValue)}
+              change={`${codPos.deliveredCount.toLocaleString("en-IN")} delivered`}
               tone="warning"
-              sub={
-                summary
-                  ? `Awaiting remittance · in flight ${formatPaise(summary.cod.inFlightValue)} · RTO ${formatPaise(summary.cod.rtoValue)} never collected`
-                  : ""
-              }
+              sub={`Awaiting remittance · in flight ${formatPaise(codPos.inFlightValue)} · RTO ${formatPaise(codPos.rtoValue)} never collected`}
             />
           ) : (
             <Metric
@@ -461,6 +471,23 @@ export default function ReconciliationPage() {
               sub="No courier data — delivery status unknown"
             />
           )}
+          {/* Parcels the courier has stopped reporting on. Neither collectible
+              nor written off — the single largest number in the system, and it
+              was invisible until this card. Rendered whenever courier data
+              exists so a zero here reads as an all-clear, not as absence. */}
+          {codPos?.hasCourierData ? (
+            <Metric
+              label="COD tracking gone dark"
+              value={formatPaise(codPos.unknownValue)}
+              change={`${codPos.unknownCount.toLocaleString("en-IN")} parcels`}
+              tone={codPos.unknownCount === 0 ? "positive" : "negative"}
+              sub={
+                codPos.unknownOldestDays !== null
+                  ? `No scan in 30+ days — oldest silent ${codPos.unknownOldestDays} days. Ask the courier for a COD remittance MIS.`
+                  : "Every COD parcel has reported a scan in the last 30 days."
+              }
+            />
+          ) : null}
         </div>
 
         {/* The chain, and where it breaks. A leg with no data source reports
@@ -545,6 +572,17 @@ function LegBreakdown({ legs, live = false, freight = null }) {
                 <span className="text-[12.5px]" style={{ color: "var(--color-accent)" }}>Not available yet</span>
               )}
             </div>
+            {/* The money, not just the counts — 542 of 8,388 matched reads as a
+                detail until it says ₹6.9L of ₹2.1Cr is verified. The freight leg
+                is excluded: its unmatched value is deliberately zero (what an
+                unbilled parcel WILL cost is unknown until its invoice arrives),
+                so rendering it would print a false ₹0. */}
+            {leg.state === "ran" && leg.matchType !== "SHIPMENT_FREIGHT" ? (
+              <p className="text-[12.5px] text-muted-foreground">
+                <span className="text-foreground">{formatPaise(leg.matchedValue)}</span> verified ·{" "}
+                {formatPaise(leg.unmatchedValue)} not yet traced
+              </p>
+            ) : null}
             {leg.blockedReason ? (
               <p className="text-[12.5px] text-muted-foreground">{leg.blockedReason}</p>
             ) : null}
