@@ -275,6 +275,25 @@ export default function RevenuePage() {
                   tone={rateTone(data?.cancellations?.ratePct, data?.cancellations?.priorRatePct)}
                   sub={`${data?.cancellations?.count ?? 0} orders cancelled · ${pctLabel(data?.cancellations?.valueRatePct)} by value`}
                 />
+                {/* §12 — the backend calls this "a metric founders steer on",
+                    and it was rendered only as one bar in the waterfall, where
+                    a rate creeping from 4% to 6% is invisible. */}
+                <Metric
+                  label="Discount rate · §12"
+                  value={pctLabel(data?.discounts?.ratePct)}
+                  change={rateChangeLabel(data?.discounts?.ratePct, data?.discounts?.priorRatePct)}
+                  tone={rateTone(data?.discounts?.ratePct, data?.discounts?.priorRatePct)}
+                  sub={
+                    data?.discounts?.value != null ? (
+                      <>
+                        <AbbrCurrency value={data.discounts.value} /> given away · assumed brand-funded (Shopify reports one
+                        total)
+                      </>
+                    ) : (
+                      "Share of gross order value given as discounts"
+                    )
+                  }
+                />
               </>
             )}
           </div>
