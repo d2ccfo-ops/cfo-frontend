@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
+import SyncHealthBanner from "@/components/cards/SyncHealthBanner";
 import ConnectionCard from "@/components/cards/ConnectionCard";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { formatInrShort } from "@/lib/money";
@@ -2286,7 +2287,18 @@ function ConnectionsContent() {
 
   return (
     <>
-      <TopNav title="Connections" subtitle="Connect the sources CFOOS reads from · 3 of 6 core sources connected" />
+      {/* "3 of 6 core sources connected" used to be hardcoded here — on the
+          one page whose entire job is reporting what is connected. It read as
+          a live count, it never moved, and it was wrong for every
+          organisation including the one with nine sources. The cards below
+          each report their own real state; a header that summarises them has
+          to be computed or absent, so it is absent. */}
+      <TopNav title="Connections" subtitle="Connect the sources CFOOS reads from" />
+
+      {/* §26/§31: what the run HISTORY says, which no card's current status
+          can express — a feed that reports success and returns nothing, or a
+          failure that has repeated four nights running. */}
+      <SyncHealthBanner />
 
       <div className="flex flex-col gap-8">
         {shopifyStatus === "connected" ? (
