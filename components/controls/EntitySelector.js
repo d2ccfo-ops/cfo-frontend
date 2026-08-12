@@ -4,6 +4,7 @@ import { useAuth, useOrganization } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Icon, ENTITY_PATHS } from "@/components/icons";
+import { setSelectedEntity } from "./entityStore";
 
 // The legal entity the numbers belong to — the GST-registered company, not the
 // Clerk workspace.
@@ -42,7 +43,14 @@ export default function EntitySelector({ onChange }) {
     fetchEntities().then((list) => {
       if (cancelled) return;
       setEntities(list);
-      setSelectedId((current) => current ?? list[0]?.id ?? null);
+      setSelectedId((current) => {
+        const next = current ?? list[0]?.id ?? null;
+        // Published to the shared store, which DateRangeContext folds into the
+        // query string every page appends. Without this the picker changes a
+        // label and nothing else — which is what it did before P5.6.
+        setSelectedEntity(next);
+        return next;
+      });
     });
     return () => {
       cancelled = true;
@@ -98,6 +106,7 @@ export default function EntitySelector({ onChange }) {
               }`}
               onClick={() => {
                 setSelectedId(entity.id);
+                setSelectedEntity(entity.id);
                 setOpen(false);
                 onChange?.(entity);
               }}

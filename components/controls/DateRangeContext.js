@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
+import { useSelectedEntity } from "./entityStore";
 
 // The date filter lives in the global header but the data lives in pages, so
 // the selection has to be shared state rather than local picker state. Every
@@ -178,6 +179,11 @@ export function DateRangeProvider({ children }) {
     getSnapshot,
     getServerSnapshot
   );
+  // P5.6. The selected legal entity is folded into the SAME query string every
+  // page already appends, so entity filtering reaches all fourteen pages
+  // through one change here rather than through fourteen call sites — twelve
+  // of which somebody would get right.
+  const { id: legalEntityId } = useSelectedEntity();
 
   const setPreset = useCallback((next) => {
     writeStore({ ...getSnapshot(), preset: next });
@@ -195,18 +201,23 @@ export function DateRangeProvider({ children }) {
 
   const value = useMemo(() => {
     const range = resolvePreset(preset, custom);
+    const params = [];
+    if (range) params.push(`from=${range.from}`, `to=${range.to}`);
+    if (legalEntityId) params.push(`legalEntityId=${encodeURIComponent(legalEntityId)}`);
     return {
       preset,
       setPreset,
       custom,
       setCustom,
       range,
-      // Appended directly to fetch URLs. Empty string for the default period,
-      // which is what makes "no filter" and "month to date" the same request.
-      query: range ? `?from=${range.from}&to=${range.to}` : "",
+      legalEntityId,
+      // Appended directly to fetch URLs. Empty string for the default period
+      // and no entity, which is what makes "no filter" and "month to date over
+      // the whole organisation" the same request.
+      query: params.length > 0 ? `?${params.join("&")}` : "",
       // Included in effect dependency arrays: a string changes identity only
-      // when the actual window changes, unlike the `range` object.
-      key: range ? `${range.from}..${range.to}` : "default",
+      // when the actual window or entity changes, unlike the `range` object.
+      key: `${range ? `${range.from}..${range.to}` : "default"}::${legalEntityId ?? "all"}`,
       label: preset,
       // False for the first tick, while the stored selection is being read
       // back. Pages hold their fetches until it flips, otherwise every reload
@@ -215,7 +226,7 @@ export function DateRangeProvider({ children }) {
       // the wrong period and a wasted round trip on every page load.
       ready: hydrated,
     };
-  }, [preset, custom, setPreset, setCustom, hydrated]);
+  }, [preset, custom, setPreset, setCustom, hydrated, legalEntityId]);
 
   return <DateRangeContext.Provider value={value}>{children}</DateRangeContext.Provider>;
 }
