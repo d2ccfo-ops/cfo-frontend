@@ -8,6 +8,8 @@ import MetricSkeleton from "@/components/ui/MetricSkeleton";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 import ProfitabilityTable from "@/components/tables/ProfitabilityTable";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
+import ChannelProfitability from "@/components/cards/ChannelProfitability";
+import CampaignProfitability from "@/components/cards/CampaignProfitability";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
 import { fetchEvidence, evidenceToRows, downloadEvidenceCsv } from "@/lib/evidence";
@@ -48,6 +50,11 @@ export default function ProfitabilityPage() {
 
   const [contribution, setContribution] = useState(null);
   const [products, setProducts] = useState(null);
+  // P6.7 / P6.6. Fetched alongside the rest rather than lazily: both are
+  // small aggregates and a founder scanning margin wants channel mix in the
+  // same glance, not after a second spinner.
+  const [channels, setChannels] = useState(null);
+  const [campaigns, setCampaigns] = useState(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
@@ -63,9 +70,11 @@ export default function ProfitabilityPage() {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [cRes, pRes] = await Promise.all([
+        const [cRes, pRes, chRes, cpRes] = await Promise.all([
           fetch(`${api}/metrics/contribution-margin${dateQuery}`, authed),
           fetch(`${api}/metrics/product-profitability${dateQuery}`, authed),
+          fetch(`${api}/metrics/channel-profitability${dateQuery}`, authed),
+          fetch(`${api}/metrics/campaign-profitability${dateQuery}`, authed),
         ]);
         if (cancelled) return;
         if (!cRes.ok && !pRes.ok) {
@@ -74,6 +83,8 @@ export default function ProfitabilityPage() {
         }
         setContribution(cRes.ok ? await cRes.json() : null);
         setProducts(pRes.ok ? await pRes.json() : null);
+        setChannels(chRes.ok ? await chRes.json() : null);
+        setCampaigns(cpRes.ok ? await cpRes.json() : null);
       } catch {
         if (!cancelled) setFailed(true);
       } finally {
@@ -298,6 +309,15 @@ export default function ProfitabilityPage() {
             needs a stored daily/monthly series, and MetricSnapshot is only
             written for the default period today — so this says so instead of
             drawing a line through numbers nobody measured. */}
+        {/* P6.7. Above the margin-trend placeholder because it is a real
+            answer to "where is the margin going" that the trend chart cannot
+            give yet. */}
+        <ChannelProfitability data={channels} loading={loading} />
+
+        {/* P6.6. Below channels: campaign is the finer question, and it only
+            becomes worth reading once channel mix is understood. */}
+        <CampaignProfitability data={campaigns} loading={loading} />
+
         <NoDataPanel
           term="chart-margin-trend"
           title="Contribution margin trend"
