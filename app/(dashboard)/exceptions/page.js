@@ -46,15 +46,18 @@ export default function ExceptionsPage() {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [ladderRes, contributionRes, freshnessRes, productsRes, burnRes] = await Promise.all([
+        const [ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes] = await Promise.all([
           fetch(`${api}/metrics/revenue-ladder${dateQuery}`, authed),
           fetch(`${api}/metrics/contribution-margin${dateQuery}`, authed),
           fetch(`${api}/metrics/freshness`, authed),
           fetch(`${api}/metrics/product-profitability${dateQuery}`, authed),
           fetch(`${api}/metrics/burn-runway`, authed),
+          // Money-shaped exceptions (dark COD, unmatched payments, freight
+          // orphans) live in the reconciliation summary.
+          fetch(`${api}/reconciliation/summary${dateQuery}`, authed),
         ]);
         if (cancelled) return;
-        if (![ladderRes, contributionRes, freshnessRes, productsRes, burnRes].some((r) => r.ok)) {
+        if (![ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes].some((r) => r.ok)) {
           setFailed(true);
           return;
         }
@@ -64,6 +67,7 @@ export default function ExceptionsPage() {
           freshness: freshnessRes.ok ? await freshnessRes.json() : null,
           products: productsRes.ok ? await productsRes.json() : null,
           burn: burnRes.ok ? await burnRes.json() : null,
+          recon: reconRes.ok ? await reconRes.json() : null,
         });
       } catch {
         if (!cancelled) setFailed(true);
