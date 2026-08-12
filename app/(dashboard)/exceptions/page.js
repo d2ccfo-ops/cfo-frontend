@@ -6,13 +6,27 @@ import TopNav from "@/components/layout/TopNav";
 import AlertCard from "@/components/ui/AlertCard";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 import { useDateRange } from "@/components/controls/DateRangeContext";
-import { deriveAnomalies } from "@/lib/insights";
+import { toAlerts } from "@/lib/anomalies";
+import { deriveSystemHealth } from "@/lib/insights";
 
-// Every alert here is derived from live metric payloads by lib/insights.js —
-// the same function the Overview page uses, so the two screens can never
-// disagree about what is wrong. This page used to hold five invented alerts
-// ("Myntra settlement 19 days overdue, ₹5.2 L") naming a marketplace this
-// store doesn't sell on, with tab counts hardcoded to match.
+// Two sources, deliberately, and the distinction is not cosmetic:
+//
+//   §17 anomalies      GET /anomalies — computed and PERSISTED by the
+//                      backend's rule engine. These survive a refresh, carry
+//                      a status and an owner, and accumulate history, so
+//                      "how long has this been true" is answerable.
+//   System health      lib/insights.js, still computed in the browser from
+//                      payloads this page already fetches. A broken
+//                      connector or missing COGS is not a metric that moved;
+//                      it is the state of the pipeline, and there is no
+//                      §17 rule for it.
+//
+// Both render through the same AlertCard, and the two sets are disjoint by
+// construction — the four rules that moved server-side were deleted from
+// deriveSystemHealth rather than left in place, so nothing double-reports.
+//
+// The Overview and Daily brief pages read the same two sources, so the three
+// screens still cannot disagree about what is wrong.
 
 const SEVERITIES = ["critical", "warning", "info"];
 
@@ -46,26 +60,30 @@ export default function ExceptionsPage() {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes] = await Promise.all([
+        const [anomaliesRes, ladderRes, contributionRes, freshnessRes, burnRes, reconRes] = await Promise.all([
+          // §17 anomalies. Not date-filtered: the engine runs on its own
+          // trailing-28-day window and stores the period on each row, so
+          // scoping this to the page's picker would silently hide findings
+          // whose window doesn't line up with it.
+          fetch(`${api}/anomalies`, authed),
           fetch(`${api}/metrics/revenue-ladder${dateQuery}`, authed),
           fetch(`${api}/metrics/contribution-margin${dateQuery}`, authed),
           fetch(`${api}/metrics/freshness`, authed),
-          fetch(`${api}/metrics/product-profitability${dateQuery}`, authed),
           fetch(`${api}/metrics/burn-runway`, authed),
           // Money-shaped exceptions (dark COD, unmatched payments, freight
           // orphans) live in the reconciliation summary.
           fetch(`${api}/reconciliation/summary${dateQuery}`, authed),
         ]);
         if (cancelled) return;
-        if (![ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes].some((r) => r.ok)) {
+        if (![anomaliesRes, ladderRes, contributionRes, freshnessRes, burnRes, reconRes].some((r) => r.ok)) {
           setFailed(true);
           return;
         }
         setPayloads({
+          anomalies: anomaliesRes.ok ? await anomaliesRes.json() : null,
           ladder: ladderRes.ok ? await ladderRes.json() : null,
           contribution: contributionRes.ok ? await contributionRes.json() : null,
           freshness: freshnessRes.ok ? await freshnessRes.json() : null,
-          products: productsRes.ok ? await productsRes.json() : null,
           burn: burnRes.ok ? await burnRes.json() : null,
           recon: reconRes.ok ? await reconRes.json() : null,
         });
@@ -81,7 +99,9 @@ export default function ExceptionsPage() {
     };
   }, [getToken, dateQuery, dateKey, dateReady]);
 
-  const alerts = payloads ? deriveAnomalies(payloads) : [];
+  // Server findings first — they are the persisted, auditable ones, and a
+  // founder scanning top-down should hit those before pipeline warnings.
+  const alerts = payloads ? [...toAlerts(payloads.anomalies), ...deriveSystemHealth(payloads)] : [];
   const counts = {
     all: alerts.length,
     ...Object.fromEntries(SEVERITIES.map((s) => [s, alerts.filter((a) => a.severity === s).length])),
@@ -148,7 +168,9 @@ export default function ExceptionsPage() {
           ) : visible.length > 0 ? (
             visible.map((a) => (
               <AlertCard
-                key={a.title}
+                // Server rows carry a stable id; client-derived ones are
+                // identified by their title, which is unique within that set.
+                key={a.id ?? a.title}
                 severity={a.severity}
                 title={a.title}
                 description={a.description}

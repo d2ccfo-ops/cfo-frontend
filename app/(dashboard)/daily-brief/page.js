@@ -7,7 +7,8 @@ import AlertCard from "@/components/ui/AlertCard";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
-import { deriveAnomalies, deriveActions, formatInrShort } from "@/lib/insights";
+import { deriveSystemHealth, deriveActions, formatInrShort } from "@/lib/insights";
+import { toAlerts } from "@/lib/anomalies";
 
 // This page was entirely fabricated: a hardcoded "Monday, 3 August 2026 ·
 // Synced 12 min ago", a summary paragraph asserting ₹1.84 Cr of cash and a
@@ -64,7 +65,7 @@ export default function DailyBriefPage() {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes] =
+        const [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes, anomaliesRes] =
           await Promise.all([
             fetch(`${api}/metrics/sales${dateQuery}`, authed),
             fetch(`${api}/metrics/revenue${dateQuery}`, authed),
@@ -77,9 +78,13 @@ export default function DailyBriefPage() {
             fetch(`${api}/metrics/burn-runway`, authed),
             // The COD position + money exceptions belong in a CFO brief.
             fetch(`${api}/reconciliation/summary${dateQuery}`, authed),
+            // §17 anomalies. Not date-filtered — the engine runs on its own
+            // trailing-28-day window, so scoping to the picker would hide
+            // findings whose window doesn't line up with it.
+            fetch(`${api}/anomalies`, authed),
           ]);
         if (cancelled) return;
-        const all = [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes];
+        const all = [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes, anomaliesRes];
         if (!all.some((r) => r.ok)) {
           setFailed(true);
           return;
@@ -95,6 +100,7 @@ export default function DailyBriefPage() {
           products: productsRes.ok ? await productsRes.json() : null,
           burn: burnRes.ok ? await burnRes.json() : null,
           recon: reconRes.ok ? await reconRes.json() : null,
+          anomalies: anomaliesRes.ok ? await anomaliesRes.json() : null,
         });
         setToday(
           new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
@@ -111,7 +117,8 @@ export default function DailyBriefPage() {
     };
   }, [getToken, dateQuery, dateKey, dateReady]);
 
-  const alerts = data ? deriveAnomalies(data) : [];
+  // Same two sources, same order, as Overview and Exceptions.
+  const alerts = data ? [...toAlerts(data.anomalies), ...deriveSystemHealth(data)] : [];
   const actions = data ? deriveActions(data) : [];
 
   const sales = data?.sales;

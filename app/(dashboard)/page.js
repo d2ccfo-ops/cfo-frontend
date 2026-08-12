@@ -19,7 +19,8 @@ import Link from "next/link";
 import AbbrCurrency from "@/components/ui/AbbrCurrency";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import NoDataPanel from "@/components/ui/NoDataPanel";
-import { deriveAnomalies, deriveActions, formatInrShort } from "@/lib/insights";
+import { deriveSystemHealth, deriveActions, formatInrShort } from "@/lib/insights";
+import { toAlerts } from "@/lib/anomalies";
 
 function ev(title, sourceLabel, rows) {
   return { title, sourceLabel, rows };
@@ -36,9 +37,11 @@ function comparisonLabel(comparison) {
     : "vs same period last month (live)";
 }
 
-// formatInrShort, deriveAnomalies and deriveActions moved to lib/insights.js so
-// the Exceptions page renders the SAME alerts this page computes rather than a
-// second, invented set.
+// Alerts come from two places, and every screen that shows them reads BOTH in
+// the same order so they cannot disagree: §17 anomalies from GET /anomalies
+// (persisted server-side, mapped by lib/anomalies.js) and system-health
+// checks still computed in the browser by lib/insights.js's
+// deriveSystemHealth. formatInrShort and deriveActions also live there.
 
 // CARD DEFINITIONS — deliberately carry NO value, change, comparison or
 // evidence. They used to, and that was the single most dangerous thing on this
@@ -256,6 +259,7 @@ export default function OverviewPage() {
   const [liveBurn, setLiveBurn] = useState(null);
   const [livePayables, setLivePayables] = useState(null);
   const [liveRecon, setLiveRecon] = useState(null);
+  const [liveAnomalies, setLiveAnomalies] = useState(null);
   // Starts true so the very first paint is skeletons rather than mock numbers
   // that get replaced a moment later — that flash is what made the old page
   // feel like it was showing real data when it wasn't.
@@ -408,7 +412,7 @@ export default function OverviewPage() {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [revenueRes, rtoRes, cashRes, availableCashRes, adSpendRes, adEfficiencyRes, salesRes, freshnessRes, inventoryValueRes, contributionRes, ladderRes, productsRes, burnRes, payablesRes, reconRes] = await Promise.all([
+        const [revenueRes, rtoRes, cashRes, availableCashRes, adSpendRes, adEfficiencyRes, salesRes, freshnessRes, inventoryValueRes, contributionRes, ladderRes, productsRes, burnRes, payablesRes, reconRes, anomaliesRes] = await Promise.all([
           fetch(`${api}/metrics/revenue${dateQuery}`, authed),
           fetch(`${api}/metrics/rto-rate${dateQuery}`, authed),
           fetch(`${api}/metrics/cash-received${dateQuery}`, authed),
@@ -427,6 +431,10 @@ export default function OverviewPage() {
           // couriers are holding (or have gone silent on), which is the single
           // largest number in the system.
           fetch(`${api}/reconciliation/summary${dateQuery}`, authed),
+          // §17 anomalies. Deliberately not date-filtered — the engine runs
+          // on its own trailing-28-day window, so scoping to the picker
+          // would hide findings whose window doesn't line up with it.
+          fetch(`${api}/anomalies`, authed),
         ]);
         if (cancelled) return;
         if (revenueRes.ok) setLiveRevenue(await revenueRes.json());
@@ -444,6 +452,7 @@ export default function OverviewPage() {
         if (burnRes.ok) setLiveBurn(await burnRes.json());
         if (payablesRes.ok) setLivePayables(await payablesRes.json());
         if (reconRes.ok) setLiveRecon(await reconRes.json());
+        if (anomaliesRes.ok) setLiveAnomalies(await anomaliesRes.json());
       } catch {
         // Every live* stays null and the cards render their "No data" state.
         // This flag is what separates "nothing is connected" from "we could not
@@ -469,13 +478,19 @@ export default function OverviewPage() {
     ? [{ name: "Net revenue", colorRole: "accent", points: liveLadder.byChannel.map((c) => ({ x: c.channel, y: c.netRevenue.value })) }]
     : [];
 
-  const anomalies = deriveAnomalies({
-    ladder: liveLadder,
-    contribution: liveContribution,
-    freshness: liveFreshness,
-    products: liveProducts,
-    burn: liveBurn,
-  });
+  // Server §17 findings first, then the client-side system-health checks —
+  // the same two sources, in the same order, as the Exceptions and Daily
+  // brief pages, so the three screens cannot disagree about what is wrong.
+  const anomalies = [
+    ...toAlerts(liveAnomalies),
+    ...deriveSystemHealth({
+      ladder: liveLadder,
+      contribution: liveContribution,
+      freshness: liveFreshness,
+      burn: liveBurn,
+      recon: liveRecon,
+    }),
+  ];
   const actions = deriveActions({
     contribution: liveContribution,
     freshness: liveFreshness,
