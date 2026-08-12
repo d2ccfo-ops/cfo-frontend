@@ -7,6 +7,7 @@ import Metric from "@/components/ui/Metric";
 import MetricSkeleton from "@/components/ui/MetricSkeleton";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 import ProfitabilityTable from "@/components/tables/ProfitabilityTable";
+import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import { formatInrShort as rupeesShort } from "@/lib/money";
 
@@ -135,6 +136,7 @@ export default function ProfitabilityPage() {
                   the largest cost layer was already on file. */}
               <Metric
                 label={cm3?.reliable ? "Contribution margin (CM3)" : cm0?.reliable ? "Gross margin (CM0)" : "Contribution margin (CM3)"}
+                badge={<DataStatusBadge dataStatus={contribution?.dataStatus} />}
                 value={cm3?.reliable ? `${cm3.marginPct}%` : cm0?.reliable ? `${cm0.marginPct}%` : "Not measurable"}
                 change={contribution ? `${contribution.dataCompleteness}% of inputs` : "No data"}
                 tone={cm3?.reliable ? "positive" : "warning"}
@@ -148,6 +150,7 @@ export default function ProfitabilityPage() {
               />
               <Metric
                 label={cm3?.reliable ? "Contribution profit" : cm0?.reliable ? "Gross profit (CM0)" : "Contribution profit"}
+                badge={<DataStatusBadge dataStatus={contribution?.dataStatus} />}
                 value={cm3?.reliable ? rupeesShort(cm3.value) : cm0?.reliable ? rupeesShort(cm0.value) : "Not measurable"}
                 change={contribution?.status ?? "No data"}
                 tone={cm3?.reliable ? "positive" : "warning"}
@@ -190,7 +193,10 @@ export default function ProfitabilityPage() {
             missing layers only subtract — the true number is LOWER. */}
         {!loading && contribution?.levels ? (
           <div className="gcard p-5">
-            <div className="mb-1 text-base font-medium text-foreground">The margin ladder</div>
+            <div className="mb-1 flex items-center gap-2 text-base font-medium text-foreground">
+              The margin ladder
+              <DataStatusBadge dataStatus={contribution?.dataStatus} />
+            </div>
             <p className="mb-3 text-[12.5px] text-muted-foreground">
               Net revenue {rupeesShort(contribution.netRevenue.value)} minus each cost layer in §36 order.
               A level marked incomplete is an overstatement — its missing layers only subtract.
@@ -262,6 +268,7 @@ export default function ProfitabilityPage() {
         ) : (
           <ProfitabilityTable
             title="Top products by revenue"
+            badge={<DataStatusBadge dataStatus={products?.dataStatus} />}
             subtitle="Revenue is measured per line and needs no cost data — COGS and contribution show “—” for SKUs with no landed cost on file"
             rows={(products?.topByRevenue ?? []).map(toTableRow)}
             emptyMessage="No orders in this period."
@@ -273,6 +280,7 @@ export default function ProfitabilityPage() {
         ) : canRankByMargin ? (
           <ProfitabilityTable
             title="Most profitable products"
+            badge={<DataStatusBadge dataStatus={products?.dataStatus} />}
             subtitle={`Ranked by CM0 (net revenue − product cost). Only the ${products.costedSkuCount} fully-costed SKU${products.costedSkuCount === 1 ? "" : "s"} can be ranked; ${products.stopsAtNote}`}
             rows={(products?.topByMargin ?? []).map(toTableRow)}
             emptyMessage="No costed SKUs sold in this period."
@@ -289,6 +297,7 @@ export default function ProfitabilityPage() {
         {loading ? null : canRankByMargin && lossMakers.length > 0 ? (
           <ProfitabilityTable
             title="Loss-making products"
+            badge={<DataStatusBadge dataStatus={products?.dataStatus} />}
             subtitle="Selling below product cost — before shipping, fees and ads, which would only make these worse"
             rows={lossMakers.map(toTableRow)}
           />

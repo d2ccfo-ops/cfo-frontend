@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
 import Metric from "@/components/ui/Metric";
+import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import MetricSkeleton from "@/components/ui/MetricSkeleton";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -156,6 +157,7 @@ export default function SettlementsPage() {
             <>
               <Metric
                 label="Paid out to you"
+                badge={<DataStatusBadge dataStatus={summary?.settlementDataStatus} />}
                 value={hasPayouts ? formatPaise(inPeriod.netAmount) : "No data"}
                 change={
                   hasPayouts
@@ -173,6 +175,7 @@ export default function SettlementsPage() {
               />
               <Metric
                 label="Provider fees"
+                badge={<DataStatusBadge dataStatus={summary?.settlementDataStatus} />}
                 value={grossInPeriod > 0n ? formatPaise(feeInPeriod.toString()) : "No data"}
                 change={feeRate !== null ? `${feeRate.toFixed(2)}% of gross` : "—"}
                 tone={feeRate !== null && feeRate > 3 ? "negative" : "neutral"}
@@ -180,6 +183,7 @@ export default function SettlementsPage() {
               />
               <Metric
                 label="COD collected, not yet remitted"
+                badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
                 value={hasCourierData ? formatPaise(cod.deliveredValue) : "No data"}
                 change={hasCourierData ? `${cod.deliveredCount.toLocaleString("en-IN")} delivered` : "Connect a courier"}
                 tone={hasCourierData ? "warning" : "neutral"}
@@ -190,6 +194,7 @@ export default function SettlementsPage() {
                   reporting, and that is a different and much worse fact. */}
               <Metric
                 label="Status unknown"
+                badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
                 value={hasCourierData ? formatPaise(cod.unknownValue) : "No data"}
                 change={
                   hasCourierData && cod.unknownCount > 0
@@ -219,6 +224,7 @@ export default function SettlementsPage() {
             <>
               <Metric
                 label="COD still in transit"
+                badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
                 value={hasCourierData ? formatPaise(cod.inFlightValue) : "No data"}
                 change={hasCourierData ? `${cod.inFlightCount.toLocaleString("en-IN")} orders` : "Connect a courier"}
                 tone="neutral"

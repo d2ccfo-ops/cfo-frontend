@@ -8,6 +8,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import FinancialChart from "@/components/charts/FinancialChart";
 import RevenueTrendChart from "@/components/charts/RevenueTrendChart";
 import AbbrCurrency from "@/components/ui/AbbrCurrency";
+import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import MetricCardSkeleton from "@/components/ui/MetricCardSkeleton";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
@@ -186,8 +187,9 @@ export default function RevenuePage() {
         ) : null}
 
         <div>
-          <h2 className="mb-1 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+          <h2 className="mb-1 flex items-center gap-2 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
             Revenue ladder
+            <DataStatusBadge dataStatus={data?.dataStatus} />
           </h2>
           {/* Every "+12%" below is measured against a window the reader could
               not previously see. Naming both windows is what makes the

@@ -6,6 +6,7 @@ import DateRangePicker from "@/components/controls/DateRangePicker";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import TopNav from "@/components/layout/TopNav";
 import Metric from "@/components/ui/Metric";
+import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import ReconciliationTable, { formatPaise } from "@/components/tables/ReconciliationTable";
 import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
 import TableSkeleton from "@/components/ui/TableSkeleton";
@@ -457,6 +458,7 @@ export default function ReconciliationPage() {
           {codPos?.hasCourierData ? (
             <Metric
               label="COD collected by courier"
+              badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
               value={formatPaise(codPos.deliveredValue)}
               change={`${codPos.deliveredCount.toLocaleString("en-IN")} delivered`}
               tone="warning"
@@ -482,6 +484,7 @@ export default function ReconciliationPage() {
           {codPos?.hasCourierData ? (
             <Metric
               label="COD tracking gone dark"
+              badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
               value={formatPaise(codPos.unknownValue)}
               change={`${codPos.unknownCount.toLocaleString("en-IN")} parcels`}
               tone={codPos.unknownCount === 0 ? "positive" : "negative"}

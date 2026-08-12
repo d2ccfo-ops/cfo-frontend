@@ -27,6 +27,8 @@ export default function MetricCard({
   onDragEnd,
   onDragOver,
   isDragging = false,
+  // §28 status pill node (a <DataStatusBadge/>), rendered beside the label.
+  badge = null,
 }) {
   const [menu, setMenu] = useState(false);
   // Right-click anywhere on the card, as well as the kebab. The kebab stays
@@ -78,7 +80,10 @@ export default function MetricCard({
       )}
 
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 text-[13px] font-medium text-muted-foreground">{label}</div>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <div className="min-w-0 text-[13px] font-medium text-muted-foreground">{label}</div>
+          {badge}
+        </div>
         {(onInfo || onRemove) && (
           <div className="relative shrink-0">
             <button

@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
 import Metric from "@/components/ui/Metric";
+import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import MetricSkeleton from "@/components/ui/MetricSkeleton";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -132,6 +133,7 @@ export default function ExpensesPage() {
               />
               <Metric
                 label="Product cost (COGS)"
+                badge={<DataStatusBadge dataStatus={contribution?.dataStatus} />}
                 value={hasCogs ? rupeesShort(cogsLayer.amount) : "No data"}
                 // "% of line VALUE" — this figure weights by rupees, not row
                 // count; calling it "lines" overstated nothing but confused

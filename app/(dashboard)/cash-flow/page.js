@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
 import Metric from "@/components/ui/Metric";
+import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import MetricCardSkeleton from "@/components/ui/MetricCardSkeleton";
 import CashForecastCard from "@/components/cards/CashForecastCard";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -164,18 +165,21 @@ export default function CashFlowPage() {
               />
               <Metric
                 label={forecast?.reliability === "inflows_only" ? "Inflows only, in 30 days" : "Projected in 30 days"}
+                badge={<DataStatusBadge dataStatus={forecast?.dataStatus} />}
                 value={closing == null ? "—" : formatInrShort(closing)}
                 tone={verdict?.tone ?? "neutral"}
                 sub={lastDay ? `On ${formatDay(lastDay.date)}` : ""}
               />
               <Metric
                 label="Inflows expected"
+                badge={<DataStatusBadge dataStatus={forecast?.dataStatus} />}
                 value={forecast ? formatInrShort(paiseToRupees(forecast.totals.inflowMinor)) : "—"}
                 tone="neutral"
                 sub="Settlements and COD remittance from orders"
               />
               <Metric
                 label="Outflows expected"
+                badge={<DataStatusBadge dataStatus={forecast?.dataStatus} />}
                 value={
                   forecast
                     ? forecast.totals.outflowMinor === "0"

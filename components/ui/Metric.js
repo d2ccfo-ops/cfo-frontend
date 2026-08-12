@@ -21,7 +21,7 @@ const TONE = {
 //
 // The hover "i" exists because a right-click menu nobody knows about is the
 // same as no menu. It is the affordance; the right-click is the shortcut.
-export default function Metric({ label, value, change, tone = "neutral", sub }) {
+export default function Metric({ label, value, change, tone = "neutral", sub, badge = null }) {
   const menu = useContextMenu();
   const [info, setInfo] = useState(false);
   const documented = hasMetricDefinition(label);
@@ -39,7 +39,13 @@ export default function Metric({ label, value, change, tone = "neutral", sub }) 
           i
         </button>
 
-        <div className="pr-6 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+        {/* The §28 status pill rides beside the label, not inside `change` —
+            change is a movement claim, this is a trust claim, and merging the
+            two would let a green +12% wash out an amber ESTIMATED. */}
+        <div className="flex items-start justify-between gap-2 pr-6">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+          {badge}
+        </div>
         <div className="mt-1 text-2xl font-normal text-foreground">{value}</div>
         {change ? (
           <div className="mt-2">

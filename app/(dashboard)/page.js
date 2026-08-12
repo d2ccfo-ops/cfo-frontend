@@ -6,6 +6,7 @@ import useFlipList from "@/components/hooks/useFlipList";
 import TopNav from "@/components/layout/TopNav";
 import MetricCard from "@/components/ui/MetricCard";
 import MetricCardSkeleton from "@/components/ui/MetricCardSkeleton";
+import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import AlertCard from "@/components/ui/AlertCard";
 import FinancialChart from "@/components/charts/FinancialChart";
@@ -466,6 +467,7 @@ export default function OverviewPage() {
         liveRevenue.changePct == null ? "No prior data" : `${liveRevenue.changePct >= 0 ? "+" : ""}${liveRevenue.changePct}%`;
       return {
         ...m,
+        dataStatus: liveRevenue.dataStatus,
         value: formatInrShort(liveRevenue.value),
         change: changeLabel,
         changeDirection,
@@ -665,6 +667,7 @@ export default function OverviewPage() {
         if (cm0?.reliable) {
           return {
             ...m,
+            dataStatus: c.dataStatus,
             value: `${cm0.marginPct}%`,
             change: formatInrShort(cm0.value),
             changeDirection: "flat",
@@ -677,6 +680,7 @@ export default function OverviewPage() {
         }
         return {
           ...m,
+          dataStatus: c.dataStatus,
           value: "Not measurable",
           change: `${c.dataCompleteness}% of inputs`,
           changeDirection: "flat",
@@ -693,6 +697,7 @@ export default function OverviewPage() {
 
       return {
         ...m,
+        dataStatus: c.dataStatus,
         value: `${cm3.marginPct}%`,
         change: formatInrShort(cm3.value),
         changeDirection: "flat",
@@ -969,6 +974,7 @@ export default function OverviewPage() {
         liveCash.changePct == null ? "No prior data" : `${liveCash.changePct >= 0 ? "+" : ""}${liveCash.changePct}%`;
       return {
         ...m,
+        dataStatus: liveCash.dataStatus,
         value: formatInrShort(liveCash.value),
         change: changeLabel,
         changeDirection,
@@ -1080,6 +1086,7 @@ export default function OverviewPage() {
                   <MetricCard
                     key={m.label}
                     {...m}
+                    badge={<DataStatusBadge dataStatus={m.dataStatus} />}
                     label={forPeriod(m.label, datePreset)}
                     onEvidence={() => openDrawer(m.evidence)}
                     onInfo={() => setInfo(m)}
@@ -1113,8 +1120,9 @@ export default function OverviewPage() {
             existing because it was ordered before the window). */}
         {liveRecon?.codPosition?.hasCourierData ? (
           <div>
-            <h2 className="mb-3 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            <h2 className="mb-3 flex items-center gap-2 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
               Where the COD cash is <span className="normal-case tracking-normal">· all-time, not period-filtered</span>
+              <DataStatusBadge dataStatus={liveRecon.codDataStatus} />
             </h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {[

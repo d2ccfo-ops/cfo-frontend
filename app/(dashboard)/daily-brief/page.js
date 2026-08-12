@@ -6,6 +6,7 @@ import TopNav from "@/components/layout/TopNav";
 import AlertCard from "@/components/ui/AlertCard";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 import { useDateRange } from "@/components/controls/DateRangeContext";
+import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import { deriveAnomalies, deriveActions, formatInrShort } from "@/lib/insights";
 
 // This page was entirely fabricated: a hardcoded "Monday, 3 August 2026 ·
@@ -17,7 +18,7 @@ import { deriveAnomalies, deriveActions, formatInrShort } from "@/lib/insights";
 // and recommendations come from lib/insights.js, so this page, the Overview and
 // the Exceptions page all say the same thing about the same business.
 
-function QuickMetric({ label, value, note, tone = "neutral", loading }) {
+function QuickMetric({ label, value, note, tone = "neutral", loading, badge = null }) {
   if (loading) {
     return (
       <div className="gcard p-[15px]" role="status" aria-busy="true">
@@ -32,7 +33,10 @@ function QuickMetric({ label, value, note, tone = "neutral", loading }) {
     tone === "positive" ? "var(--color-success)" : tone === "negative" ? "var(--color-destructive)" : "var(--color-muted-foreground)";
   return (
     <div className="gcard p-[15px]">
-      <div className="text-[11px] uppercase tracking-[0.05em] text-muted-foreground">{label}</div>
+      <div className="flex items-center justify-between gap-1.5">
+        <span className="text-[11px] uppercase tracking-[0.05em] text-muted-foreground">{label}</span>
+        {badge}
+      </div>
       <div className="mt-0.5 text-[19px] font-medium text-foreground">{value}</div>
       <div className="text-[12.5px] font-medium" style={{ color }}>{note}</div>
     </div>
@@ -152,6 +156,7 @@ export default function DailyBriefPage() {
           <QuickMetric
             loading={loading}
             label="Net revenue"
+            badge={<DataStatusBadge dataStatus={data?.revenue?.dataStatus} />}
             value={data?.revenue ? formatInrShort(data.revenue.value) : "No data"}
             note={data?.revenue ? pct(data.revenue.changePct) : "Connect a sales channel"}
             tone={data?.revenue && (data.revenue.changePct ?? 0) >= 0 ? "positive" : "negative"}
@@ -176,6 +181,7 @@ export default function DailyBriefPage() {
           <QuickMetric
             loading={loading}
             label="Gross margin (CM0)"
+            badge={<DataStatusBadge dataStatus={data?.contribution?.dataStatus} />}
             value={
               data?.contribution?.levels?.cm0?.reliable
                 ? `${data.contribution.levels.cm0.marginPct}%`
@@ -192,6 +198,7 @@ export default function DailyBriefPage() {
             <QuickMetric
               loading={loading}
               label="COD gone dark"
+              badge={<DataStatusBadge dataStatus={data?.recon?.codDataStatus} />}
               value={formatInrShort(Number(((data.recon.codPosition ?? data.recon.cod).unknownValue).slice(0, -2) || "0"))}
               note={`${(data.recon.codPosition ?? data.recon.cod).unknownCount.toLocaleString("en-IN")} parcels silent 30+ days — all-time`}
               tone={(data.recon.codPosition ?? data.recon.cod).unknownCount > 0 ? "negative" : "positive"}

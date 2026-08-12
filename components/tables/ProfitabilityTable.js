@@ -10,10 +10,16 @@ export default function ProfitabilityTable({
   rows = [],
   loading = false,
   emptyMessage = "No products in this period.",
+  // §28 status pill node — every COGS-derived table carries the same label as
+  // the cards computed from the same payload.
+  badge = null,
 }) {
   return (
     <div className="gcard p-5">
-      <div className="text-base font-medium text-foreground">{title}</div>
+      <div className="flex items-center gap-2 text-base font-medium text-foreground">
+        {title}
+        {badge}
+      </div>
       {subtitle ? <div className="mb-2.5 text-xs text-muted-foreground">{subtitle}</div> : <div className="mb-2.5" />}
       <table className="table">
         <thead>
