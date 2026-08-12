@@ -27,6 +27,11 @@ const LEG_LABELS = {
   PAYMENT_SETTLEMENT: "Payment → settlement",
   SETTLEMENT_BANK: "Settlement → bank",
   COD_REMITTANCE: "COD → bank",
+  // The only leg where the money goes OUT rather than coming in, which is why
+  // it reads backwards from the others: a refund we issued should appear in a
+  // payout as a deduction, and one that doesn't is money the store believes it
+  // returned and the gateway has no record of.
+  REFUND_PAYMENT: "Refund → settlement",
   // The only leg that checks a COST rather than a receipt, so it is worded as
   // a charge: "was this parcel actually billed to us, and for what".
   SHIPMENT_FREIGHT: "Shipment → courier invoice",
