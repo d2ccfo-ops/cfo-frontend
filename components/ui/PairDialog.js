@@ -3,7 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
-import { formatInr } from "@/lib/money";
+import { formatInrMinor } from "@/lib/money";
 
 // P6.3 — pair an unmatched order to the payment that actually settled it.
 //
@@ -25,7 +25,7 @@ function DiffLabel({ paise }) {
   return (
     <span className="text-[12px]" style={{ color: over ? "var(--color-accent)" : "var(--color-destructive)" }}>
       {over ? "+" : "−"}
-      {formatInr(Math.abs(n))} {over ? "more than the order" : "less than the order"}
+      {formatInrMinor(Math.abs(n))} {over ? "more than the order" : "less than the order"}
     </span>
   );
 }
@@ -106,7 +106,11 @@ export default function PairDialog({ open, row, onClose, onPaired }) {
         <Dialog.Content className="dialog" style={{ maxWidth: 600 }}>
           <Dialog.Title className="text-[15px] font-medium text-foreground">Pair this order to a payment</Dialog.Title>
           <Dialog.Description className="mt-1 text-[12.5px] text-muted-foreground">
-            Order {row?.orderNumber ?? row?.id} · {row?.amount != null ? formatInr(Number(row.amount)) : "—"}. This records
+            {/* `expected` — the order's own total. The /reconciliation route
+                serialises expected/received/difference and has no `amount`
+                field at all, so the old read rendered "—" on every row and
+                took the one number that makes the pairing decidable with it. */}
+            Order {row?.orderNumber ?? row?.id} · {formatInrMinor(row?.expected)}. This records
             that the money arrived and names which transfer it came in. It does not change revenue or cash received —
             both are already counted from the payment itself.
           </Dialog.Description>
@@ -150,7 +154,7 @@ export default function PairDialog({ open, row, onClose, onPaired }) {
                         />
                         <span className="min-w-0 flex-1">
                           <span className="block text-[13px] text-foreground">
-                            {formatInr(Number(c.amountPaise))}
+                            {formatInrMinor(Number(c.amountPaise))}
                             <span className="ml-2 text-[12px] text-muted-foreground">
                               {c.capturedAt ? new Date(c.capturedAt).toLocaleDateString("en-IN") : "no capture date"}
                               {c.method ? ` · ${c.method}` : ""}

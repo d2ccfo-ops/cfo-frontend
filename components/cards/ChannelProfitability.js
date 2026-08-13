@@ -1,6 +1,6 @@
 "use client";
 
-import { formatInr } from "@/lib/money";
+import { formatInrMinor } from "@/lib/money";
 
 // §14 / §20.3 channel profitability (P6.7).
 //
@@ -86,12 +86,12 @@ export default function ChannelProfitability({ data, loading }) {
                   ) : null}
                 </td>
                 <td className="text-right text-[13px]">{c.orders.toLocaleString("en-IN")}</td>
-                <td className="text-right text-[13px]">{formatInr(Number(c.netRevenueMinor))}</td>
-                <td className="text-right text-[13px] text-muted-foreground">{formatInr(Number(c.cogsMinor))}</td>
-                <td className="text-right text-[13px] text-muted-foreground">{formatInr(Number(c.shippingMinor))}</td>
-                <td className="text-right text-[13px] text-muted-foreground">{formatInr(Number(c.transactionFeesMinor))}</td>
+                <td className="text-right text-[13px]">{formatInrMinor(Number(c.netRevenueMinor))}</td>
+                <td className="text-right text-[13px] text-muted-foreground">{formatInrMinor(Number(c.cogsMinor))}</td>
+                <td className="text-right text-[13px] text-muted-foreground">{formatInrMinor(Number(c.shippingMinor))}</td>
+                <td className="text-right text-[13px] text-muted-foreground">{formatInrMinor(Number(c.transactionFeesMinor))}</td>
                 <td className="text-right">
-                  <span className="text-[13px] text-foreground">{formatInr(Number(c.cm2Minor))}</span>
+                  <span className="text-[13px] text-foreground">{formatInrMinor(Number(c.cm2Minor))}</span>
                   <span className="block text-[11.5px] text-muted-foreground">
                     {c.cm2Pct === null ? "—" : `${c.cm2Pct}%`}
                   </span>
@@ -116,7 +116,7 @@ export default function ChannelProfitability({ data, loading }) {
               Ad spend not attributed to any channel
             </span>
             <span className="text-[13px]" style={{ color: "var(--color-accent)" }}>
-              {formatInr(Number(data.unallocatedAdSpendMinor))}
+              {formatInrMinor(Number(data.unallocatedAdSpendMinor))}
             </span>
           </div>
           <p className="mt-1 text-[11.5px]" style={{ color: "var(--color-accent)" }}>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatInr } from "@/lib/money";
+import { formatInrMinor } from "@/lib/money";
 
 // P6.4 — the §15 reconciliation exception taxonomy.
 //
@@ -57,7 +57,7 @@ function Row({ type }) {
                 {type.count.toLocaleString("en-IN")}
               </span>
               <span className="block text-[11.5px] text-muted-foreground">
-                {formatInr(Number(type.valueMinor))}
+                {formatInrMinor(Number(type.valueMinor))}
               </span>
             </>
           ) : (
@@ -83,7 +83,7 @@ function Row({ type }) {
               <div key={s.id} className="flex items-baseline justify-between gap-3 rounded-md bg-muted px-2.5 py-1.5">
                 <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">{s.reference}</span>
                 <span className="text-[11.5px] text-muted-foreground">{s.detail}</span>
-                <span className="shrink-0 text-[12px] text-foreground">{formatInr(Number(s.amountMinor))}</span>
+                <span className="shrink-0 text-[12px] text-foreground">{formatInrMinor(Number(s.amountMinor))}</span>
               </div>
             ))}
           </div>
@@ -120,7 +120,7 @@ export default function ExceptionTaxonomy({ report, loading }) {
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-[15px] font-medium text-foreground">Reconciliation exceptions</h3>
         <span className="text-[13px] text-foreground">
-          {report.totalCount.toLocaleString("en-IN")} · {formatInr(Number(report.totalValueMinor))}
+          {report.totalCount.toLocaleString("en-IN")} · {formatInrMinor(Number(report.totalValueMinor))}
         </span>
       </div>
       <p className="mb-3 text-[12px] text-muted-foreground">

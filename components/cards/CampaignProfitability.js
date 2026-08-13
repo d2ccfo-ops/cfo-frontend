@@ -1,6 +1,6 @@
 "use client";
 
-import { formatInr } from "@/lib/money";
+import { formatInrMinor } from "@/lib/money";
 
 // §14 campaign profitability (P6.6).
 //
@@ -43,7 +43,7 @@ export default function CampaignProfitability({ data, loading }) {
         </p>
         {Number(data.accountTotalSpendMinor) > 0 ? (
           <p className="mt-2 text-[12px] text-muted-foreground">
-            {formatInr(Number(data.accountTotalSpendMinor))} of ad spend is recorded for this period — it just is not
+            {formatInrMinor(Number(data.accountTotalSpendMinor))} of ad spend is recorded for this period — it just is not
             broken down.
           </p>
         ) : null}
@@ -55,7 +55,7 @@ export default function CampaignProfitability({ data, loading }) {
     <div className="gcard p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-[15px] font-medium text-foreground">Spend by campaign</h3>
-        <span className="text-[13px] text-foreground">{formatInr(Number(data.totalSpendMinor))}</span>
+        <span className="text-[13px] text-foreground">{formatInrMinor(Number(data.totalSpendMinor))}</span>
       </div>
 
       {/* Coverage stated whenever it is not complete. A ranking built on a
@@ -89,7 +89,7 @@ export default function CampaignProfitability({ data, loading }) {
                     {c.channel ? ` · ${c.channel}` : " · channel not stated"}
                   </span>
                 </td>
-                <td className="text-right text-[13px]">{formatInr(Number(c.spendMinor))}</td>
+                <td className="text-right text-[13px]">{formatInrMinor(Number(c.spendMinor))}</td>
                 <td className="text-right text-[13px] text-muted-foreground">{c.spendSharePct}%</td>
                 <td className="text-right text-[13px] text-muted-foreground">
                   {c.cpc === null ? "—" : `₹${c.cpc.toFixed(2)}`}
