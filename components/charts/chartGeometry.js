@@ -1,7 +1,20 @@
 // Shared chart color roles + value formatting.
-// colorRole names are referenced by every page's series definitions —
-// only the underlying color values changed when the design was ported.
-
+// colorRole names are referenced by every page's series definitions, so the
+// names are a public contract and only the values behind them move.
+//
+// They moved again in this port, and not by a retint: the ramp was REORDERED.
+// chart-1 followed --primary down to near-black (near-WHITE in dark), and
+// chart-2 changed hue family outright, orange -> blue. So "accent" no longer
+// draws anything orange, and it is no longer the same hue as the --accent
+// token, which stayed orange for badges and severity dots. Renaming the role to
+// match would mean rewriting the series definitions at every call site, which
+// is a bigger blast radius than the mismatch is worth — but do not read the
+// role name as a colour.
+//
+// Consequence worth knowing before you use these anywhere new: in BOTH themes
+// chart-1 is within a hair of --primary, which is the tooltip chip background.
+// Anything that paints a chart-1 swatch on that chip needs a ring to survive
+// (see ChartTooltip in FinancialChart.js).
 export const CHART_COLORS = {
   accent: "var(--color-chart-1)",
   accent2: "var(--color-chart-2)",

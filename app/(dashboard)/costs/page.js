@@ -376,78 +376,80 @@ export default function CostsPage() {
             </span>
           </div>
 
-          <table className="table">
-            <thead>
-              <tr><th>SKU</th><th>Product</th><th>Revenue</th><th>Units</th><th>Avg. selling price</th><th>Landed cost (₹)</th><th>Source</th></tr>
-            </thead>
-            {loadingSkus ? (
-              <TableSkeleton rows={8} columns={7} />
-            ) : (
-              <tbody>
-                {(skus ?? []).map((s) => {
-                  const avg = s.units > 0 ? s.revenue / s.units : 0;
-                  return (
-                    <tr key={s.sku}>
-                      <td className="font-mono text-[12.5px]">{s.sku}</td>
-                      <td className="max-w-[220px] truncate" title={s.productName}>{s.productName}</td>
-                      <td><AbbrCurrency value={s.revenue} /></td>
-                      <td>{s.units.toLocaleString("en-IN")}</td>
-                      <td><AbbrCurrency value={Math.round(avg)} /></td>
-                      <td>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={drafts[s.sku] ?? ""}
-                          onChange={(e) => setDrafts((d) => ({ ...d, [s.sku]: e.target.value }))}
-                          // The cost already on file shows as the placeholder,
-                          // so an existing entry can be found and corrected
-                          // rather than only ever added blind.
-                          placeholder={s.landedCost != null ? String(s.landedCost) : "—"}
-                          className="w-28 rounded-md border border-border bg-card px-2 py-1 text-[13px] text-foreground outline-none focus:border-primary disabled:opacity-40"
-                        />
-                      </td>
-                      {/* Whether the number on file is real or the seeded
-                          placeholder — invisible before, which made 741
-                          fabricated costs look like entered data. */}
-                      <td>
-                        {s.costSource == null ? (
-                          <span className="text-muted-foreground">—</span>
-                        ) : s.costSource === "ESTIMATED" ? (
-                          <span className="text-[11.5px] font-medium" style={{ color: "var(--color-accent)" }}>estimate</span>
-                        ) : (
-                          <span className="text-[11.5px] text-muted-foreground">{s.costSource.toLowerCase().replace("_", " ")}</span>
-                        )}
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr><th>SKU</th><th>Product</th><th>Revenue</th><th>Units</th><th>Avg. selling price</th><th>Landed cost (₹)</th><th>Source</th></tr>
+              </thead>
+              {loadingSkus ? (
+                <TableSkeleton rows={8} columns={7} />
+              ) : (
+                <tbody>
+                  {(skus ?? []).map((s) => {
+                    const avg = s.units > 0 ? s.revenue / s.units : 0;
+                    return (
+                      <tr key={s.sku}>
+                        <td className="font-mono text-[12.5px]">{s.sku}</td>
+                        <td className="max-w-[220px] truncate" title={s.productName}>{s.productName}</td>
+                        <td><AbbrCurrency value={s.revenue} /></td>
+                        <td>{s.units.toLocaleString("en-IN")}</td>
+                        <td><AbbrCurrency value={Math.round(avg)} /></td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={drafts[s.sku] ?? ""}
+                            onChange={(e) => setDrafts((d) => ({ ...d, [s.sku]: e.target.value }))}
+                            // The cost already on file shows as the placeholder,
+                            // so an existing entry can be found and corrected
+                            // rather than only ever added blind.
+                            placeholder={s.landedCost != null ? String(s.landedCost) : "—"}
+                            className="w-28 rounded-md border border-border bg-card px-2 py-1 text-[13px] text-foreground outline-none focus:border-primary disabled:opacity-40"
+                          />
+                        </td>
+                        {/* Whether the number on file is real or the seeded
+                            placeholder — invisible before, which made 741
+                            fabricated costs look like entered data. */}
+                        <td>
+                          {s.costSource == null ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : s.costSource === "ESTIMATED" ? (
+                            <span className="text-[11.5px] font-medium" style={{ color: "var(--color-accent)" }}>estimate</span>
+                          ) : (
+                            <span className="text-[11.5px] text-muted-foreground">{s.costSource.toLowerCase().replace("_", " ")}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(skus?.length ?? 0) === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-center text-muted-foreground">
+                        {search
+                          ? `No SKU matches "${search}"${skuStatus === "missing" ? " among those without a cost" : ""}.`
+                          : skuStatus === "missing"
+                            ? "Every order line has a cost. Contribution margin is measurable."
+                            : "No SKUs yet."}
                       </td>
                     </tr>
-                  );
-                })}
-                {(skus?.length ?? 0) === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-muted-foreground">
-                      {search
-                        ? `No SKU matches "${search}"${skuStatus === "missing" ? " among those without a cost" : ""}.`
-                        : skuStatus === "missing"
-                          ? "Every order line has a cost. Contribution margin is measurable."
-                          : "No SKUs yet."}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            )}
+                  ) : null}
+                </tbody>
+              )}
 
-          {skuHasMore ? (
-            <tfoot>
-              <tr>
-                <td colSpan={7} className="py-3 text-center">
-                  <button type="button" className="btn btn-secondary" onClick={loadMoreSkus} disabled={loadingMoreSkus}>
-                    {loadingMoreSkus ? "Loading…" : `Load ${Math.min(SKU_PAGE_SIZE, skuTotal - (skus?.length ?? 0))} more`}
-                  </button>
-                </td>
-              </tr>
-            </tfoot>
-          ) : null}
-          </table>
+            {skuHasMore ? (
+              <tfoot>
+                <tr>
+                  <td colSpan={7} className="py-3 text-center">
+                    <button type="button" className="btn btn-secondary" onClick={loadMoreSkus} disabled={loadingMoreSkus}>
+                      {loadingMoreSkus ? "Loading…" : `Load ${Math.min(SKU_PAGE_SIZE, skuTotal - (skus?.length ?? 0))} more`}
+                    </button>
+                  </td>
+                </tr>
+              </tfoot>
+            ) : null}
+            </table>
+          </div>
 
           {draftRows.length > 0 ? (
             <div className="mt-4 flex items-center gap-3">

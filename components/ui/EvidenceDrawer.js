@@ -8,19 +8,19 @@ export default function EvidenceDrawer({ open, title = "Evidence", sourceLabel =
       <Dialog.Portal>
         <Dialog.Overlay
           className="fixed inset-0 z-50 flex justify-end"
-          style={{ background: "color-mix(in srgb, var(--color-foreground) 45%, transparent)" }}
+          style={{ background: "var(--color-scrim)" }}
         />
         <Dialog.Content
           className="fixed inset-y-0 right-0 z-50 flex h-full flex-col bg-card shadow-raised outline-none"
-          style={{ width: "min(420px, 100%)" }}
+          style={{ width: "min(440px, 100%)" }}
         >
-          <div className="flex items-start justify-between gap-2.5 border-b border-border p-5">
+          <div className="flex items-start justify-between gap-3 border-b border-border/60 p-5">
             <div>
-              <Dialog.Title className="text-lg font-medium text-foreground">{title}</Dialog.Title>
-              <div className="mt-0.5 text-[12.5px] text-muted-foreground">{sourceLabel}</div>
+              <Dialog.Title className="text-lg font-semibold text-foreground">{title}</Dialog.Title>
+              <div className="mt-0.5 text-xs text-muted-foreground">{sourceLabel}</div>
             </div>
             <Dialog.Close asChild>
-              <button className="h-[30px] w-[30px] flex-none cursor-pointer rounded-md border-none bg-transparent text-sm text-foreground" aria-label="Close">
+              <button className="grid h-8 w-8 flex-none cursor-pointer place-items-center rounded-full border-none bg-transparent text-sm text-muted-foreground hover:bg-muted" aria-label="Close">
                 ✕
               </button>
             </Dialog.Close>
@@ -30,12 +30,12 @@ export default function EvidenceDrawer({ open, title = "Evidence", sourceLabel =
               // block rows stack label over value — a definition paragraph
               // right-aligned against its label is unreadable.
               r.block ? (
-                <div key={i} className="border-b border-border py-2.5 last:border-0">
+                <div key={i} className="border-b border-border/70 py-2.5 last:border-0">
                   <div className="text-[13px] text-muted-foreground">{r.label}</div>
                   <div className="mt-0.5 text-[13px] leading-relaxed text-foreground">{r.value}</div>
                 </div>
               ) : (
-                <div key={i} className="flex items-center justify-between gap-2.5 border-b border-border py-2.5 last:border-0">
+                <div key={i} className="flex items-center justify-between gap-3 border-b border-border/70 py-2.5 last:border-0">
                   <span className="text-[13px] text-muted-foreground">{r.label}</span>
                   <span className="text-right text-[13.5px] font-medium text-foreground">{r.value}</span>
                 </div>

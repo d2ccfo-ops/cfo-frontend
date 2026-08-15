@@ -362,21 +362,23 @@ export default function CashFlowPage() {
           <div className="gcard p-5">
             <div className="mb-3 text-base font-medium text-foreground">What this forecast is made of</div>
             <div style={{ overflowX: "auto" }}>
-              <table className="table">
-                <thead>
-                  <tr><th>Component</th><th>Basis</th><th>{`Over ${forecast.horizonDays} days`}</th><th>Why</th></tr>
-                </thead>
-                <tbody>
-                  {forecast.components.map((c) => (
-                    <tr key={c.key}>
-                      <td className="font-medium text-foreground">{c.label}</td>
-                      <td><StatusBadge status={BASIS_TONE[c.basis]} label={BASIS_LABEL[c.basis]} /></td>
-                      <td>{c.basis === "unavailable" ? "—" : formatInrShort(paiseToRupees(c.valueMinor))}</td>
-                      <td className="text-[12.5px] text-muted-foreground" style={{ maxWidth: 420 }}>{c.note}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <thead>
+                    <tr><th>Component</th><th>Basis</th><th>{`Over ${forecast.horizonDays} days`}</th><th>Why</th></tr>
+                  </thead>
+                  <tbody>
+                    {forecast.components.map((c) => (
+                      <tr key={c.key}>
+                        <td className="font-medium text-foreground">{c.label}</td>
+                        <td><StatusBadge status={BASIS_TONE[c.basis]} label={BASIS_LABEL[c.basis]} /></td>
+                        <td>{c.basis === "unavailable" ? "—" : formatInrShort(paiseToRupees(c.valueMinor))}</td>
+                        <td className="text-[12.5px] text-muted-foreground" style={{ maxWidth: 420 }}>{c.note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
               Timing assumptions: prepaid settles T+{forecast.assumptions.prepaidSettlementLagDays}, COD remits
@@ -390,33 +392,35 @@ export default function CashFlowPage() {
         <div className="gcard p-5">
           <div className="mb-2.5 text-base font-medium text-foreground">Upcoming payments</div>
           {payables?.upcoming?.length > 0 ? (
-            <table className="table">
-              <thead>
-                <tr><th>Payee</th><th>Bill</th><th>Amount</th><th>Due date</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {payables.upcoming.map((p) => {
-                  // Measured against the server's own calculation timestamp,
-                  // not Date.now(). Reading the clock during render is impure
-                  // — and it would also mean "due in 2 days" could silently
-                  // change on a re-render that fetched nothing.
-                  const days = Math.ceil(
-                    (new Date(`${p.dueDate}T00:00:00Z`) - new Date(payables.lastCalculatedAt)) / 86400000
-                  );
-                  const tone = days < 0 ? "negative" : days <= 3 ? "warning" : "neutral";
-                  const label = days < 0 ? `${Math.abs(days)} days overdue` : days === 0 ? "Due today" : `Due in ${days} days`;
-                  return (
-                    <tr key={`${p.vendorName}-${p.billNumber}`}>
-                      <td>{p.vendorName}</td>
-                      <td className="text-[12.5px] text-muted-foreground">{p.billNumber}</td>
-                      <td>{formatInrShort(p.balance)}</td>
-                      <td>{formatDay(p.dueDate)}</td>
-                      <td><StatusBadge status={tone} label={label} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr><th>Payee</th><th>Bill</th><th>Amount</th><th>Due date</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {payables.upcoming.map((p) => {
+                    // Measured against the server's own calculation timestamp,
+                    // not Date.now(). Reading the clock during render is impure
+                    // — and it would also mean "due in 2 days" could silently
+                    // change on a re-render that fetched nothing.
+                    const days = Math.ceil(
+                      (new Date(`${p.dueDate}T00:00:00Z`) - new Date(payables.lastCalculatedAt)) / 86400000
+                    );
+                    const tone = days < 0 ? "negative" : days <= 3 ? "warning" : "neutral";
+                    const label = days < 0 ? `${Math.abs(days)} days overdue` : days === 0 ? "Due today" : `Due in ${days} days`;
+                    return (
+                      <tr key={`${p.vendorName}-${p.billNumber}`}>
+                        <td>{p.vendorName}</td>
+                        <td className="text-[12.5px] text-muted-foreground">{p.billNumber}</td>
+                        <td>{formatInrShort(p.balance)}</td>
+                        <td>{formatDay(p.dueDate)}</td>
+                        <td><StatusBadge status={tone} label={label} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <p className="text-[13px] text-muted-foreground">
               No scheduled payments are known. Vendor bills come from an accounting connection (Zoho Books) — without

@@ -40,7 +40,11 @@ export default function MetricCard({
   const isGood = changeDirection === "flat" ? true : changeDirection === goodDirection;
   const changeTone = changeDirection === "flat" ? "neutral" : isGood ? "positive" : "negative";
   const changeColorClass =
-    changeTone === "neutral" ? "text-muted-foreground" : changeTone === "positive" ? "text-success" : "text-destructive";
+    changeTone === "neutral"
+      ? "text-muted-foreground"
+      : changeTone === "positive"
+        ? "bg-success-soft text-success"
+        : "bg-destructive-soft text-destructive";
   const resolvedStatus = status || (isGood ? "positive" : "negative");
   const resolvedStatusLabel = statusLabel || STATUS_LABEL_MAP[resolvedStatus];
   const reorderable = !!onDragStart;
@@ -49,7 +53,7 @@ export default function MetricCard({
     <>
     <div
       data-flip-key={label}
-      className={`gcard group relative flex flex-col p-5 ${isDragging ? "opacity-50" : ""}`}
+      className={`gcard lift group relative flex flex-col p-5 ${isDragging ? "opacity-50" : ""}`}
       {...ctx.triggerProps}
       {...explainAttrs(label)}
       onDragOver={
@@ -141,8 +145,8 @@ export default function MetricCard({
       </div>
 
       <div className="mt-3 flex items-baseline gap-2">
-        <span className="text-[26px] leading-none tracking-tight text-foreground">{value}</span>
-        {change ? <span className={`text-[13px] ${changeColorClass}`}>{change}</span> : null}
+        <span className="num whitespace-nowrap text-[24px] font-semibold leading-none text-foreground">{value}</span>
+        {change ? <span className={`num rounded-full px-2 py-0.5 text-[12px] font-medium ${changeColorClass}`}>{change}</span> : null}
       </div>
 
       {comparison ? <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{comparison}</p> : null}

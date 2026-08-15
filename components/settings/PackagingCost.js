@@ -110,7 +110,7 @@ export default function PackagingCost() {
         contribution margin after fulfilment (CM1) is marked unreliable rather than assuming packaging is free.
       </p>
 
-      <div className="grid grid-cols-2 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
         <div className="field">
           <label>Per order (₹)</label>
           <input

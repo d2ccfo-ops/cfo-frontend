@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth, useOrganization } from "@clerk/nextjs";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Icon, ENTITY_PATHS } from "@/components/icons";
 import { setSelectedEntity } from "./entityStore";
@@ -22,6 +22,9 @@ export default function EntitySelector({ onChange }) {
 
   const [entities, setEntities] = useState(null); // null = loading
   const [selectedId, setSelectedId] = useState(null);
+  // Mirrors selectedId so the fetch continuation can read the current choice
+  // without a functional updater — see the note in the effect below.
+  const selectedIdRef = useRef(null);
   const [open, setOpen] = useState(false);
 
   const fetchEntities = useCallback(async () => {
@@ -43,14 +46,25 @@ export default function EntitySelector({ onChange }) {
     fetchEntities().then((list) => {
       if (cancelled) return;
       setEntities(list);
-      setSelectedId((current) => {
-        const next = current ?? list[0]?.id ?? null;
-        // Published to the shared store, which DateRangeContext folds into the
-        // query string every page appends. Without this the picker changes a
-        // label and nothing else — which is what it did before P5.6.
-        setSelectedEntity(next);
-        return next;
-      });
+      // The selection is read from a ref rather than through a functional
+      // setState updater, and that is the whole point of this shape.
+      //
+      // setSelectedEntity notifies the module store that DateRangeProvider
+      // subscribes to via useSyncExternalStore. Calling it from INSIDE an
+      // updater — which is where it used to live — meant it ran while React
+      // was invoking that updater, so the store told DateRangeProvider to
+      // re-render in the middle of rendering EntitySelector. React reported it
+      // as "Cannot update a component (DateRangeProvider) while rendering a
+      // different component (EntitySelector)". An updater has to be pure; this
+      // one had a side effect with a subscriber on the other end.
+      const next = selectedIdRef.current ?? list[0]?.id ?? null;
+      selectedIdRef.current = next;
+      setSelectedId(next);
+      // Published to the shared store, which DateRangeContext folds into the
+      // query string every page appends. Without this the picker changes a
+      // label and nothing else — which is what it did before P5.6. Now called
+      // from the effect's async continuation, which is not a render.
+      setSelectedEntity(next);
     });
     return () => {
       cancelled = true;
@@ -105,6 +119,7 @@ export default function EntitySelector({ onChange }) {
                 entity.id === selectedId ? "bg-primary-soft text-primary" : "text-foreground hover:bg-muted"
               }`}
               onClick={() => {
+                selectedIdRef.current = entity.id;
                 setSelectedId(entity.id);
                 setSelectedEntity(entity.id);
                 setOpen(false);

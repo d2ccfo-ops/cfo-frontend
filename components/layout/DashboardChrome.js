@@ -3,6 +3,7 @@
 import { UserButton } from "@clerk/nextjs";
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import EntitySelector from "@/components/controls/EntitySelector";
 import DateRangePicker from "@/components/controls/DateRangePicker";
@@ -10,8 +11,11 @@ import DataFreshnessBadge from "@/components/ui/DataFreshnessBadge";
 import { DateRangeProvider } from "@/components/controls/DateRangeContext";
 import { Icon, MENU_PATHS, SEARCH_PATHS, HELP_CIRCLE_PATHS } from "@/components/icons";
 import ExplainModeProvider, { useExplainMode } from "@/components/ui/ExplainMode";
+import { Logo } from "@/components/ui/Logo";
 import DemoDataBanner from "@/components/layout/DemoDataBanner";
 import NotificationBell from "@/components/layout/NotificationBell";
+import { AskCfoProvider } from "@/components/ai/askEngine";
+import AskCfoOverlay from "@/components/ai/AskCfoOverlay";
 
 // The date-range provider wraps the whole shell because the picker that sets
 // it lives in this header while everything that reads it lives in {children}.
@@ -28,7 +32,7 @@ function ExplainModeButton() {
       aria-pressed={active}
       aria-label={active ? "Exit what's-this mode" : "What's this? Explain anything on this page"}
       title={active ? "Exit — or press Esc" : "What's this? Click, then click anything on the page"}
-      className={`grid h-10 w-10 place-items-center rounded-full transition-colors ${
+      className={`grid h-10 w-10 place-items-center rounded-xl transition-colors ${
         active ? "bg-primary-soft text-primary" : "text-muted-foreground hover:bg-muted"
       }`}
     >
@@ -39,31 +43,38 @@ function ExplainModeButton() {
 
 export default function DashboardChrome({ children }) {
   const [collapsed, setCollapsed] = useState(false);
+  // Only feeds the `key` on the content wrapper so the `rise` entry animation
+  // replays per route. The design uses TanStack's useRouterState; the App
+  // Router equivalent is usePathname.
+  const pathname = usePathname();
 
   return (
     <ExplainModeProvider>
     <DateRangeProvider>
+    {/* Wraps the whole shell so the popup can be opened from any page, and so
+        the conversation survives navigating between them. It loads nothing
+        until something calls open() or activate() — see the note on
+        `activated` in askEngine.js. */}
+    <AskCfoProvider>
     <div className="min-h-screen bg-background">
       {/* Above the header, not inside it: if the numbers on this screen are
           generated, that is the first thing on the page, not a chip in a
           toolbar someone learns to stop seeing. */}
-      <DemoDataBanner />
-      <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card px-4">
+      {/* <DemoDataBanner /> */}
+      <header className="sticky top-0 z-30 flex h-[68px] items-center gap-3 border-b border-border/50 bg-background/85 px-4 backdrop-blur">
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
           aria-label="Toggle navigation"
-          className="grid h-10 w-10 flex-none place-items-center rounded-full text-muted-foreground hover:bg-muted"
+          className="grid h-10 w-10 flex-none place-items-center rounded-xl text-muted-foreground hover:bg-muted"
         >
           <Icon paths={MENU_PATHS} size={20} strokeWidth={1.8} />
         </button>
-        <Link href="/" className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary-soft text-sm font-semibold text-primary">
-            C
-          </span>
-          <span className="text-[19px] font-normal tracking-tight text-foreground">
-            CFOOS <span className="text-muted-foreground">console</span>
-          </span>
+        {/* The real mark replaces the "C"-in-a-box placeholder and the CFOOS
+            wordmark that was set in the UI font. text-foreground is what the
+            mask paints with, so it inverts with the theme by itself. */}
+        <Link href="/" className="flex items-center text-foreground">
+          <Logo height={21} />
         </Link>
         <div className="ml-4 hidden items-center gap-2 md:flex">
           <EntitySelector />
@@ -74,7 +85,7 @@ export default function DashboardChrome({ children }) {
           <DataFreshnessBadge />
         </div>
         <div className="ml-auto flex items-center gap-1">
-          <div className="hidden items-center gap-2 rounded-full bg-muted px-3 py-2 text-sm text-muted-foreground lg:flex">
+          <div className="hidden items-center gap-2 rounded-full border border-border/60 bg-card px-3.5 py-2 text-sm text-muted-foreground shadow-card lg:flex">
             <Icon paths={SEARCH_PATHS} size={16} strokeWidth={1.8} />
             <input
               placeholder="Search resources, docs, metrics"
@@ -99,10 +110,20 @@ export default function DashboardChrome({ children }) {
       <div className="flex">
         <Sidebar collapsed={collapsed} />
         <main className="min-w-0 flex-1">
-          <div className="mx-auto max-w-[1280px] px-6 py-6">{children}</div>
+          <div key={pathname} className="rise mx-auto max-w-[1320px] px-6 py-8 md:pr-8">
+            {children}
+          </div>
         </main>
       </div>
+
+      {/* Outside the `rise` content wrapper on purpose. Radix portals it to
+          document.body anyway, but keeping it out of that subtree means it is
+          not remounted by the `key={pathname}` above on every navigation —
+          which would close the popup mid-answer whenever a link was followed
+          behind it. */}
+      <AskCfoOverlay />
     </div>
+    </AskCfoProvider>
     </DateRangeProvider>
     </ExplainModeProvider>
   );

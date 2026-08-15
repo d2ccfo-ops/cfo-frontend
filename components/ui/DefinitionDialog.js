@@ -33,7 +33,7 @@ export default function DefinitionDialog({ open, term, label, value, onClose }) 
       <Dialog.Portal>
         <Dialog.Overlay
           className="fixed inset-0 z-50"
-          style={{ background: "color-mix(in srgb, var(--color-foreground) 45%, transparent)" }}
+          style={{ background: "var(--color-scrim)" }}
         />
         <Dialog.Content
           className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-card shadow-raised outline-none"

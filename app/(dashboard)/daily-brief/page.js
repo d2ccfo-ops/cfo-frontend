@@ -259,7 +259,7 @@ export default function DailyBriefPage() {
             ) : alerts.length > 0 ? (
               alerts.map((a) => (
                 <AlertCard
-                  key={a.title}
+                  key={a.id}
                   severity={a.severity}
                   title={a.title}
                   description={a.description}
@@ -287,7 +287,7 @@ export default function DailyBriefPage() {
             ) : actions.length > 0 ? (
               actions.map((r) => (
                 <AlertCard
-                  key={r.title}
+                  key={r.id}
                   severity="info"
                   title={r.title}
                   description={r.description}

@@ -23,10 +23,10 @@ export default function AlertCard({
   // somewhere or does something.
   const hasAction = Boolean(actionHref || onAction);
   const actionClass =
-    "alert-card__action inline-flex h-8 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-primary transition-colors";
+    "alert-card__action inline-flex h-8 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium text-primary transition-colors";
 
   return (
-    <div className="gcard flex gap-3 p-4">
+    <div className="gcard flex gap-3 p-5">
       <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${s.dot}`} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">

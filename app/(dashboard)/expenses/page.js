@@ -261,36 +261,40 @@ export default function ExpensesPage() {
             </div>
           ) : null}
           {loading ? (
-            <table className="table">
-              <thead>
-                <tr><th>Vendor</th><th>Bill</th><th>Amount</th><th>Due</th><th>Status</th></tr>
-              </thead>
-              <TableSkeleton rows={5} columns={5} />
-            </table>
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr><th>Vendor</th><th>Bill</th><th>Amount</th><th>Due</th><th>Status</th></tr>
+                </thead>
+                <TableSkeleton rows={5} columns={5} />
+              </table>
+            </div>
           ) : upcoming.length > 0 ? (
-            <table className="table">
-              <thead>
-                <tr><th>Vendor</th><th>Bill</th><th>Amount</th><th>Due</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {upcoming.map((b, i) => {
-                  // The API sends no per-bill overdue flag, so it is derived
-                  // from the due date against the moment the data loaded.
-                  // Reading a missing field would have rendered "Scheduled" for
-                  // every bill, including the late ones.
-                  const overdue = asOfDate !== null && b.dueDate < asOfDate;
-                  return (
-                    <tr key={`${b.billNumber}-${i}`}>
-                      <td>{b.vendorName}</td>
-                      <td>{b.billNumber}</td>
-                      <td>{b.currency && b.currency !== "INR" ? `${b.currency} ${b.balance.toLocaleString("en-IN")}` : rupeesShort(b.balance)}</td>
-                      <td>{b.dueDate}</td>
-                      <td><StatusBadge status={overdue ? "negative" : "neutral"} label={overdue ? "Overdue" : "Scheduled"} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr><th>Vendor</th><th>Bill</th><th>Amount</th><th>Due</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {upcoming.map((b, i) => {
+                    // The API sends no per-bill overdue flag, so it is derived
+                    // from the due date against the moment the data loaded.
+                    // Reading a missing field would have rendered "Scheduled" for
+                    // every bill, including the late ones.
+                    const overdue = asOfDate !== null && b.dueDate < asOfDate;
+                    return (
+                      <tr key={`${b.billNumber}-${i}`}>
+                        <td>{b.vendorName}</td>
+                        <td>{b.billNumber}</td>
+                        <td>{b.currency && b.currency !== "INR" ? `${b.currency} ${b.balance.toLocaleString("en-IN")}` : rupeesShort(b.balance)}</td>
+                        <td>{b.dueDate}</td>
+                        <td><StatusBadge status={overdue ? "negative" : "neutral"} label={overdue ? "Overdue" : "Scheduled"} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <p className="py-6 text-center text-[13px] text-muted-foreground">
               {hasPayables

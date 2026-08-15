@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 
@@ -84,6 +84,12 @@ export default function ReportsPage() {
     };
   }, [load]);
 
+  // The preview renders below a list of report cards that is taller than the
+  // viewport, so a successful Preview click used to change nothing a founder
+  // could see — the result was there, several screens down, and the button
+  // just stopped saying "Working…". Scrolling to it is the feedback.
+  const previewRef = useRef(null);
+
   async function openPreview(kind) {
     setBusy(kind);
     setError(null);
@@ -97,6 +103,11 @@ export default function ReportsPage() {
         return;
       }
       setPreview(await res.json());
+      // After paint, so the node exists to scroll to. scroll-mt-24 on the
+      // panel keeps its heading clear of the sticky header.
+      requestAnimationFrame(() => {
+        previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -208,7 +219,7 @@ export default function ReportsPage() {
         )}
 
         {preview ? (
-          <div className="gcard p-5">
+          <div ref={previewRef} className="gcard rise scroll-mt-24 p-5">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <div className="text-[15px] font-medium text-foreground">
                 {preview.title}

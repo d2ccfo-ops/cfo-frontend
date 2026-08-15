@@ -56,65 +56,114 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* The ink family: a deliberately DARKER surface than the canvas, for the one
+     or two places a figure should read as engraved rather than printed. Note
+     that in dark mode --ink goes darker than --background — it is a well, not
+     a raise, in both themes. Additive: nothing consumes these yet. */
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-ink-muted: var(--ink-muted);
+  /* Modal backdrop. Its own token because the obvious shorthand is wrong:
+     `bg-foreground/30` dims correctly in light and INVERTS in dark, where
+     --foreground is near-white — a 30% white wash that brightens the very
+     page the overlay exists to push back. A scrim has to be dark in both
+     themes, so it cannot be derived from a direction-agnostic token. */
+  --color-scrim: var(--scrim);
   --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
   --shadow-card: var(--shadow-card);
   --shadow-raised: var(--shadow-raised);
-
-  /* Back-compat aliases — direction-agnostic single tokens that a handful
-     of not-yet-restyled files still reference via bg-bg/bg-surface/text-text
-     /border-divider/font-heading/font-body. Safe in both themes. */
-  --color-bg: var(--background);
-  --color-surface: var(--card);
-  --color-text: var(--foreground);
-  --color-divider: var(--border);
-  --font-heading: var(--font-sans);
-  --font-body: var(--font-sans);
 }
 
+/* The six back-compat aliases that used to live here (--color-bg,
+   --color-surface, --color-text, --color-divider, --font-heading, --font-body)
+   are gone, and the comment above them claiming "a handful of not-yet-restyled
+   files still reference" them was stale — nothing did. Verified three ways: no
+   var() reference outside their own definition, no hit for any Tailwind
+   utility they generate (bg-bg, bg-surface, text-text, border-divider,
+   font-heading, font-body), and the compiled stylesheet never emitted those
+   classes. Keeping --color-bg in particular was actively unsafe: it collides
+   with the design's own `bg-(--color-bg)` inline-value syntax, which would
+   have silently resolved to the page background instead. */
+
+/* Light theme. Transplanted whole from ai-cfo-design/src/styles.css rather
+   than cherry-picked, because every one of these values moved: the old theme
+   was a blue-primary, pure-white-card Google console, and this one is a
+   near-black-primary, off-white-floating-card fintech. Half of one and half of
+   the other is a third design nobody drew.
+
+   Three of these are structural rather than chromatic, and they only work as a
+   set — see the notes on @utility gcard and .btn below:
+     · --radius 0.5rem -> 1rem re-rounds every button, input, card and dialog.
+     · --shadow-card becomes long and diffuse with negative spread, which is
+       what lets gcard drop its border without dissolving into the canvas.
+     · --sidebar now EQUALS --background, so the sidebar is no longer a white
+       panel against grey; it is the canvas, and its contents have to float. */
 :root {
-  --radius: 0.5rem;
-  --background: oklch(0.962 0.002 247);
-  --foreground: oklch(0.264 0.006 285);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.264 0.006 285);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.264 0.006 285);
-  --primary: oklch(0.567 0.184 261);
-  --primary-foreground: oklch(1 0 0);
-  --primary-soft: oklch(0.949 0.026 259);
-  --secondary: oklch(0.968 0.002 247);
-  --secondary-foreground: oklch(0.35 0.008 285);
-  --muted: oklch(0.968 0.002 247);
-  --muted-foreground: oklch(0.51 0.008 285);
-  --accent: oklch(0.72 0.171 57);
-  --accent-foreground: oklch(1 0 0);
-  --accent-soft: oklch(0.965 0.035 80);
-  --success: oklch(0.55 0.128 152);
-  --success-soft: oklch(0.955 0.035 155);
-  --destructive: oklch(0.55 0.196 28.5);
-  --destructive-foreground: oklch(1 0 0);
-  --destructive-soft: oklch(0.958 0.024 25);
-  --border: oklch(0.885 0.004 265);
-  --input: oklch(0.885 0.004 265);
-  --ring: oklch(0.567 0.184 261);
-  --chart-1: oklch(0.567 0.184 261);
-  --chart-2: oklch(0.72 0.171 57);
-  --chart-3: oklch(0.55 0.128 152);
-  --chart-4: oklch(0.55 0.196 28.5);
-  --chart-5: oklch(0.62 0.13 300);
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.35 0.008 285);
-  --sidebar-primary: oklch(0.567 0.184 261);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.949 0.026 259);
-  --sidebar-accent-foreground: oklch(0.5 0.17 261);
-  --sidebar-border: oklch(0.885 0.004 265);
-  --sidebar-ring: oklch(0.567 0.184 261);
-  --font-sans:
-    "Google Sans", "Google Sans Text", var(--font-roboto), Roboto, -apple-system, "Segoe UI",
-    sans-serif;
-  --shadow-card: 0 1px 2px 0 rgb(60 64 67 / 0.08), 0 1px 3px 1px rgb(60 64 67 / 0.06);
-  --shadow-raised: 0 1px 3px 0 rgb(60 64 67 / 0.15), 0 4px 8px 3px rgb(60 64 67 / 0.08);
+  --radius: 1rem;
+  --background: oklch(0.963 0.002 250);
+  --foreground: oklch(0.24 0.012 265);
+  --card: oklch(0.995 0.001 250);
+  --card-foreground: oklch(0.24 0.012 265);
+  --popover: oklch(0.998 0.001 250);
+  --popover-foreground: oklch(0.24 0.012 265);
+  --primary: oklch(0.235 0.014 265);
+  --primary-foreground: oklch(0.985 0.002 250);
+  --primary-soft: oklch(0.945 0.004 260);
+  --secondary: oklch(0.955 0.003 250);
+  --secondary-foreground: oklch(0.32 0.012 265);
+  --muted: oklch(0.952 0.003 252);
+  --muted-foreground: oklch(0.575 0.011 265);
+  --accent: oklch(0.66 0.15 45);
+  --accent-foreground: oklch(0.99 0.002 250);
+  --accent-soft: oklch(0.96 0.024 55);
+  --success: oklch(0.58 0.128 152);
+  --success-soft: oklch(0.955 0.032 158);
+  --destructive: oklch(0.575 0.185 25);
+  --destructive-foreground: oklch(0.99 0.002 250);
+  --destructive-soft: oklch(0.96 0.022 22);
+  --border: oklch(0.915 0.004 258);
+  --input: oklch(0.915 0.004 258);
+  --ring: oklch(0.235 0.014 265);
+  /* The chart ramp is REORDERED, not retinted: chart-1 follows the new
+     near-black primary and chart-2 changes hue family entirely, orange -> blue.
+     components/charts/chartGeometry.js maps series roles onto chart-1/chart-2,
+     so the primary series on every Recharts surface turns near-black and the
+     second turns blue. */
+  --chart-1: oklch(0.235 0.014 265);
+  --chart-2: oklch(0.62 0.13 258);
+  --chart-3: oklch(0.66 0.11 158);
+  --chart-4: oklch(0.66 0.15 30);
+  --chart-5: oklch(0.7 0.1 300);
+  --sidebar: oklch(0.963 0.002 250);
+  --sidebar-foreground: oklch(0.42 0.011 265);
+  --sidebar-primary: oklch(0.235 0.014 265);
+  --sidebar-primary-foreground: oklch(0.985 0.002 250);
+  /* DELIBERATE DIVERGENCE FROM THE DESIGN, because the design's value is
+     broken here. ai-cfo-design sets --sidebar-accent to oklch(0.995 0.001 250)
+     — byte-identical to --card. That works in the reference only because its
+     nav sits on the page background; once the nav is a gcard panel (which the
+     same design's --sidebar == --background forces), the active row's fill and
+     the panel underneath it are the same colour to the last digit: a 1.00:1
+     contrast ratio, i.e. no active state at all. This is --primary-soft's
+     value, a real 0.05-lightness step down from the panel, so the selected row
+     reads as a filled chip rather than relying on a shadow alone. */
+  --sidebar-accent: oklch(0.945 0.004 260);
+  --sidebar-accent-foreground: oklch(0.2 0.014 265);
+  --sidebar-border: oklch(0.915 0.004 258);
+  --sidebar-ring: oklch(0.235 0.014 265);
+  --ink: oklch(0.215 0.014 265);
+  --ink-foreground: oklch(0.985 0.002 250);
+  --ink-muted: oklch(0.735 0.012 265);
+  --scrim: rgb(24 30 48 / 0.35);
+  /* var(--font-jakarta) comes from next/font in app/layout.js. "Google Sans"
+     and "Google Sans Text" are gone: they are Google-property faces that have
+     never resolved in this app, so every render silently fell through to the
+     next entry and the first two names were decoration. */
+  --font-sans: var(--font-jakarta), "Inter", -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-jakarta), "Inter", sans-serif;
+  --shadow-card: 0 1px 2px 0 rgb(24 30 48 / 0.04), 0 8px 24px -12px rgb(24 30 48 / 0.12);
+  --shadow-raised: 0 2px 6px 0 rgb(24 30 48 / 0.06), 0 18px 44px -16px rgb(24 30 48 / 0.18);
 }
 
 .dark {
@@ -124,9 +173,14 @@
   --card-foreground: oklch(0.955 0.008 250);
   --popover: oklch(0.253 0.05 266);
   --popover-foreground: oklch(0.955 0.008 250);
-  --primary: oklch(0.72 0.145 258);
-  --primary-foreground: oklch(0.18 0.045 265);
-  --primary-soft: oklch(0.32 0.062 264);
+  /* Note the direction: in light --primary went to near-BLACK, here it goes to
+     near-WHITE. Both themes make the accent the highest-contrast thing on the
+     canvas, which means the two deltas are mirror images, not the same edit.
+     Copying the light values down here would produce a black button on a navy
+     page. */
+  --primary: oklch(0.955 0.008 250);
+  --primary-foreground: oklch(0.2 0.045 265);
+  --primary-soft: oklch(0.3 0.052 264);
   --secondary: oklch(0.29 0.05 265);
   --secondary-foreground: oklch(0.95 0.008 250);
   --muted: oklch(0.29 0.05 265);
@@ -141,22 +195,847 @@
   --destructive-soft: oklch(0.32 0.07 24);
   --border: oklch(0.345 0.045 265);
   --input: oklch(0.345 0.045 265);
-  --ring: oklch(0.72 0.145 258);
-  --chart-1: oklch(0.72 0.145 258);
-  --chart-2: oklch(0.79 0.145 62);
+  --ring: oklch(0.955 0.008 250);
+  --chart-1: oklch(0.955 0.008 250);
+  --chart-2: oklch(0.72 0.145 258);
   --chart-3: oklch(0.75 0.135 158);
   --chart-4: oklch(0.71 0.16 24);
   --chart-5: oklch(0.74 0.13 300);
-  --sidebar: oklch(0.228 0.05 266);
+  /* Equal to --background, same as in light: the sidebar stops being a panel. */
+  --sidebar: oklch(0.203 0.048 265);
   --sidebar-foreground: oklch(0.93 0.01 250);
-  --sidebar-primary: oklch(0.72 0.145 258);
+  --sidebar-primary: oklch(0.955 0.008 250);
   --sidebar-primary-foreground: oklch(0.19 0.045 265);
-  --sidebar-accent: oklch(0.3 0.055 264);
+  /* Same divergence as light, smaller in degree: the design's 0.278 against a
+     0.253 card is 1.08:1 — technically a step, visually not one. */
+  --sidebar-accent: oklch(0.325 0.055 265);
   --sidebar-accent-foreground: oklch(0.95 0.008 250);
   --sidebar-border: oklch(0.345 0.045 265);
-  --sidebar-ring: oklch(0.72 0.145 258);
-  --shadow-card: 0 1px 2px 0 rgb(4 8 24 / 0.5), 0 1px 3px 1px rgb(4 8 24 / 0.35);
-  --shadow-raised: 0 2px 6px 0 rgb(4 8 24 / 0.55), 0 8px 20px 3px rgb(4 8 24 / 0.4);
+  --sidebar-ring: oklch(0.955 0.008 250);
+  /* Darker than --background — in dark mode the ink surface is a well, not a
+     raise. The shadow does the lifting in light; the recess does it here. */
+  --ink: oklch(0.163 0.042 266);
+  --ink-foreground: oklch(0.975 0.006 250);
+  --ink-muted: oklch(0.72 0.026 258);
+  /* Heavier in dark: the page it covers is already low-lightness, so the same
+     35% would barely separate the modal from what is behind it. */
+  --scrim: rgb(2 5 16 / 0.62);
+  --shadow-card: 0 1px 2px 0 rgb(4 8 24 / 0.4), 0 10px 30px -14px rgb(4 8 24 / 0.55);
+  --shadow-raised: 0 2px 8px 0 rgb(4 8 24 / 0.5), 0 22px 50px -18px rgb(4 8 24 / 0.6);
+}
+
+/* ==========================================================================
+   COLOUR PALETTES
+   ==========================================================================
+   Two independent axes, and they do NOT multiply into one list:
+
+     MODE     light / dark / system            -> the `dark` class
+     PALETTE  which hues, chosen PER MODE      -> a `p-*` or `d-*` class
+
+   A light palette and a dark palette are stored separately (cfoos-palette-light,
+   cfoos-palette-dark) and both stay applied at once — only one can match at a
+   time, because the light blocks are guarded by :root:not(.dark) and the dark
+   blocks by .dark. So a founder picks a cream light theme AND a forest dark
+   theme, and each shows up when its mode does, instead of one choice being
+   silently overwritten by the other.
+
+   SIGNATURE IS THE ABSENCE OF A CLASS, in both modes. That is what guarantees
+   the theme this app ships with cannot be regressed by anything below: light
+   Signature is :root, dark Signature is .dark, and no palette block touches
+   either. Ported from ai-cfo-design/src/styles.css.
+
+   WHY THE DARK BLOCKS ARE COMPLETE AND THE LIGHT ONES ARE NOT
+   In the reference, d-espresso and friends override ~34 of 42 tokens and let
+   the rest fall through to ITS .dark, which is Obsidian. Ours is Signature
+   navy. Inheriting from that would give Espresso navy shadows and Signature's
+   success green — the palette would not be the palette. So every dark block
+   below is Obsidian's full token set merged with its own overrides. The light
+   blocks stay partial on purpose: our :root and the reference's are the same
+   45 tokens apart from fonts, so the fall-through is already correct, and
+   staying partial means a future fix to :root reaches all ten.
+   ========================================================================== */
+
+/* Black & white — light. */
+:root:not(.dark).p-mono {
+  --background: oklch(0.965 0 0);
+  --foreground: oklch(0.18 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
+  --primary: oklch(0.18 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-soft: oklch(0.93 0 0);
+  --secondary: oklch(0.95 0 0);
+  --secondary-foreground: oklch(0.3 0 0);
+  --muted: oklch(0.945 0 0);
+  --muted-foreground: oklch(0.53 0 0);
+  --accent: oklch(0.34 0 0);
+  --accent-foreground: oklch(0.99 0 0);
+  --accent-soft: oklch(0.92 0 0);
+  --success: oklch(0.42 0 0);
+  --success-soft: oklch(0.92 0 0);
+  --destructive: oklch(0.28 0 0);
+  --destructive-foreground: oklch(0.99 0 0);
+  --destructive-soft: oklch(0.89 0 0);
+  --border: oklch(0.885 0 0);
+  --input: oklch(0.885 0 0);
+  --ring: oklch(0.18 0 0);
+  --chart-1: oklch(0.2 0 0);
+  --chart-2: oklch(0.4 0 0);
+  --chart-3: oklch(0.56 0 0);
+  --chart-4: oklch(0.7 0 0);
+  --chart-5: oklch(0.82 0 0);
+  --sidebar: oklch(0.965 0 0);
+  --sidebar-foreground: oklch(0.38 0 0);
+  --sidebar-primary: oklch(0.18 0 0);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(1 0 0);
+  --sidebar-accent-foreground: oklch(0.16 0 0);
+  --sidebar-border: oklch(0.885 0 0);
+  --sidebar-ring: oklch(0.18 0 0);
+  --ink: oklch(0.16 0 0);
+  --ink-foreground: oklch(0.98 0 0);
+  --ink-muted: oklch(0.72 0 0);
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.05), 0 8px 24px -12px rgb(0 0 0 / 0.14);
+  --shadow-raised: 0 2px 6px 0 rgb(0 0 0 / 0.07), 0 18px 44px -16px rgb(0 0 0 / 0.2);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(16 16 20 / 0.34);
+}
+
+/* Butterscotch — light. */
+:root:not(.dark).p-cream {
+  --background: oklch(0.968 0.014 88);
+  --foreground: oklch(0.26 0.024 62);
+  --card: oklch(0.992 0.008 92);
+  --card-foreground: oklch(0.26 0.024 62);
+  --popover: oklch(0.994 0.007 92);
+  --popover-foreground: oklch(0.26 0.024 62);
+  --primary: oklch(0.42 0.078 62);
+  --primary-foreground: oklch(0.985 0.012 90);
+  --primary-soft: oklch(0.945 0.028 78);
+  --secondary: oklch(0.955 0.018 86);
+  --secondary-foreground: oklch(0.34 0.03 62);
+  --muted: oklch(0.952 0.018 86);
+  --muted-foreground: oklch(0.56 0.026 68);
+  --accent: oklch(0.72 0.135 62);
+  --accent-foreground: oklch(0.24 0.04 60);
+  --accent-soft: oklch(0.945 0.05 78);
+  --success: oklch(0.58 0.11 148);
+  --success-soft: oklch(0.945 0.04 140);
+  --destructive: oklch(0.57 0.16 32);
+  --destructive-foreground: oklch(0.99 0.008 90);
+  --destructive-soft: oklch(0.945 0.038 40);
+  --border: oklch(0.905 0.018 82);
+  --input: oklch(0.905 0.018 82);
+  --ring: oklch(0.55 0.1 66);
+  --chart-1: oklch(0.62 0.13 62);
+  --chart-2: oklch(0.72 0.11 82);
+  --chart-3: oklch(0.66 0.1 140);
+  --chart-4: oklch(0.58 0.13 32);
+  --chart-5: oklch(0.5 0.07 70);
+  --sidebar: oklch(0.958 0.02 86);
+  --sidebar-foreground: oklch(0.42 0.03 64);
+  --sidebar-primary: oklch(0.42 0.078 62);
+  --sidebar-primary-foreground: oklch(0.985 0.012 90);
+  --sidebar-accent: oklch(0.992 0.008 92);
+  --sidebar-accent-foreground: oklch(0.24 0.03 62);
+  --sidebar-border: oklch(0.905 0.018 82);
+  --sidebar-ring: oklch(0.55 0.1 66);
+  --ink: oklch(0.33 0.055 60);
+  --ink-foreground: oklch(0.985 0.014 88);
+  --ink-muted: oklch(0.79 0.035 78);
+  --shadow-card: 0 1px 2px 0 oklch(0.4 0.06 60 / 0.06), 0 8px 24px -12px oklch(0.4 0.08 60 / 0.18);
+  --shadow-raised: 0 2px 6px 0 oklch(0.4 0.06 60 / 0.08), 0 18px 44px -16px oklch(0.4 0.08 60 / 0.24);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(16 16 20 / 0.34);
+}
+
+/* Oat Milk — light. */
+:root:not(.dark).p-oat {
+  --background: oklch(0.958 0.016 82);
+  --foreground: oklch(0.27 0.02 70);
+  --card: oklch(0.990 0.008 82);
+  --card-foreground: oklch(0.27 0.02 70);
+  --popover: oklch(0.994 0.007 82);
+  --popover-foreground: oklch(0.27 0.02 70);
+  --primary: oklch(0.33 0.03 80);
+  --primary-foreground: oklch(0.985 0.010 82);
+  --primary-soft: oklch(0.938 0.029 82);
+  --secondary: oklch(0.948 0.019 82);
+  --secondary-foreground: oklch(0.27 0.02 70);
+  --muted: oklch(0.946 0.019 82);
+  --muted-foreground: oklch(0.565 0.022 82);
+  --accent: oklch(0.58 0.07 150);
+  --accent-foreground: oklch(0.99 0.004 150);
+  --accent-soft: oklch(0.946 0.042 150);
+  --success: oklch(0.56 0.11 152);
+  --success-soft: oklch(0.944 0.034 152);
+  --destructive: oklch(0.56 0.16 28);
+  --destructive-soft: oklch(0.944 0.03 28);
+  --border: oklch(0.903 0.018 82);
+  --input: oklch(0.903 0.018 82);
+  --ring: oklch(0.33 0.03 80);
+  --chart-1: oklch(0.33 0.03 80);
+  --chart-2: oklch(0.58 0.07 150);
+  --chart-3: oklch(0.66 0.09 220);
+  --chart-4: oklch(0.62 0.11 300);
+  --chart-5: oklch(0.72 0.06 10);
+  --sidebar: oklch(0.954 0.016 82);
+  --sidebar-foreground: oklch(0.42 0.022 82);
+  --sidebar-primary: oklch(0.33 0.03 80);
+  --sidebar-primary-foreground: oklch(0.985 0.010 82);
+  --sidebar-accent: oklch(0.990 0.008 82);
+  --sidebar-accent-foreground: oklch(0.27 0.02 70);
+  --sidebar-border: oklch(0.903 0.018 82);
+  --sidebar-ring: oklch(0.33 0.03 80);
+  --ink: oklch(0.33 0.03 80);
+  --ink-foreground: oklch(0.985 0.010 82);
+  --ink-muted: oklch(0.78 0.026 82);
+  --shadow-card: 0 1px 2px 0 oklch(0.35 0.03 82 / 0.05), 0 8px 24px -12px oklch(0.35 0.04 82 / 0.16);
+  --shadow-raised: 0 2px 6px 0 oklch(0.35 0.03 82 / 0.07), 0 18px 44px -16px oklch(0.35 0.04 82 / 0.22);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(16 16 20 / 0.34);
+}
+
+/* Almond & Mocha — light. */
+:root:not(.dark).p-almond {
+  --background: oklch(0.955 0.02 64);
+  --foreground: oklch(0.25 0.03 48);
+  --card: oklch(0.987 0.010 64);
+  --card-foreground: oklch(0.25 0.03 48);
+  --popover: oklch(0.991 0.009 64);
+  --popover-foreground: oklch(0.25 0.03 48);
+  --primary: oklch(0.30 0.045 48);
+  --primary-foreground: oklch(0.985 0.012 64);
+  --primary-soft: oklch(0.935 0.036 64);
+  --secondary: oklch(0.945 0.024 64);
+  --secondary-foreground: oklch(0.25 0.03 48);
+  --muted: oklch(0.943 0.024 64);
+  --muted-foreground: oklch(0.565 0.028 64);
+  --accent: oklch(0.55 0.09 44);
+  --accent-foreground: oklch(0.99 0.004 44);
+  --accent-soft: oklch(0.943 0.052 44);
+  --success: oklch(0.56 0.11 152);
+  --success-soft: oklch(0.941 0.034 152);
+  --destructive: oklch(0.56 0.16 28);
+  --destructive-soft: oklch(0.941 0.03 28);
+  --border: oklch(0.900 0.022 64);
+  --input: oklch(0.900 0.022 64);
+  --ring: oklch(0.30 0.045 48);
+  --chart-1: oklch(0.30 0.045 48);
+  --chart-2: oklch(0.55 0.09 44);
+  --chart-3: oklch(0.66 0.09 114);
+  --chart-4: oklch(0.62 0.11 194);
+  --chart-5: oklch(0.72 0.06 264);
+  --sidebar: oklch(0.951 0.020 64);
+  --sidebar-foreground: oklch(0.42 0.028 64);
+  --sidebar-primary: oklch(0.30 0.045 48);
+  --sidebar-primary-foreground: oklch(0.985 0.012 64);
+  --sidebar-accent: oklch(0.987 0.010 64);
+  --sidebar-accent-foreground: oklch(0.25 0.03 48);
+  --sidebar-border: oklch(0.900 0.022 64);
+  --sidebar-ring: oklch(0.30 0.045 48);
+  --ink: oklch(0.30 0.045 48);
+  --ink-foreground: oklch(0.985 0.012 64);
+  --ink-muted: oklch(0.78 0.032 64);
+  --shadow-card: 0 1px 2px 0 oklch(0.35 0.03 64 / 0.05), 0 8px 24px -12px oklch(0.35 0.04 64 / 0.16);
+  --shadow-raised: 0 2px 6px 0 oklch(0.35 0.03 64 / 0.07), 0 18px 44px -16px oklch(0.35 0.04 64 / 0.22);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(16 16 20 / 0.34);
+}
+
+/* Sea Salt — light. */
+:root:not(.dark).p-seasalt {
+  --background: oklch(0.966 0.01 232);
+  --foreground: oklch(0.26 0.02 250);
+  --card: oklch(0.998 0.005 232);
+  --card-foreground: oklch(0.26 0.02 250);
+  --popover: oklch(0.999 0.005 232);
+  --popover-foreground: oklch(0.26 0.02 250);
+  --primary: oklch(0.30 0.035 250);
+  --primary-foreground: oklch(0.985 0.006 232);
+  --primary-soft: oklch(0.946 0.018 232);
+  --secondary: oklch(0.956 0.012 232);
+  --secondary-foreground: oklch(0.26 0.02 250);
+  --muted: oklch(0.954 0.012 232);
+  --muted-foreground: oklch(0.565 0.014 232);
+  --accent: oklch(0.62 0.10 210);
+  --accent-foreground: oklch(0.99 0.004 210);
+  --accent-soft: oklch(0.954 0.026 210);
+  --success: oklch(0.56 0.11 152);
+  --success-soft: oklch(0.952 0.034 152);
+  --destructive: oklch(0.56 0.16 28);
+  --destructive-soft: oklch(0.952 0.03 28);
+  --border: oklch(0.911 0.011 232);
+  --input: oklch(0.911 0.011 232);
+  --ring: oklch(0.30 0.035 250);
+  --chart-1: oklch(0.30 0.035 250);
+  --chart-2: oklch(0.62 0.10 210);
+  --chart-3: oklch(0.66 0.09 280);
+  --chart-4: oklch(0.62 0.11 0);
+  --chart-5: oklch(0.72 0.06 70);
+  --sidebar: oklch(0.962 0.010 232);
+  --sidebar-foreground: oklch(0.42 0.014 232);
+  --sidebar-primary: oklch(0.30 0.035 250);
+  --sidebar-primary-foreground: oklch(0.985 0.006 232);
+  --sidebar-accent: oklch(0.998 0.005 232);
+  --sidebar-accent-foreground: oklch(0.26 0.02 250);
+  --sidebar-border: oklch(0.911 0.011 232);
+  --sidebar-ring: oklch(0.30 0.035 250);
+  --ink: oklch(0.30 0.035 250);
+  --ink-foreground: oklch(0.985 0.006 232);
+  --ink-muted: oklch(0.78 0.016 232);
+  --shadow-card: 0 1px 2px 0 oklch(0.35 0.03 232 / 0.05), 0 8px 24px -12px oklch(0.35 0.04 232 / 0.16);
+  --shadow-raised: 0 2px 6px 0 oklch(0.35 0.03 232 / 0.07), 0 18px 44px -16px oklch(0.35 0.04 232 / 0.22);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(16 16 20 / 0.34);
+}
+
+/* Vanilla Bean — light. */
+:root:not(.dark).p-vanilla {
+  --background: oklch(0.968 0.022 95);
+  --foreground: oklch(0.22 0.015 95);
+  --card: oklch(0.998 0.011 95);
+  --card-foreground: oklch(0.22 0.015 95);
+  --popover: oklch(0.999 0.010 95);
+  --popover-foreground: oklch(0.22 0.015 95);
+  --primary: oklch(0.22 0.015 95);
+  --primary-foreground: oklch(0.985 0.013 95);
+  --primary-soft: oklch(0.948 0.040 95);
+  --secondary: oklch(0.958 0.026 95);
+  --secondary-foreground: oklch(0.22 0.015 95);
+  --muted: oklch(0.956 0.026 95);
+  --muted-foreground: oklch(0.565 0.031 95);
+  --accent: oklch(0.80 0.14 92);
+  /* Diverged: the reference pairs a near-white foreground with this butter
+     accent (0.80 lightness), which measures 1.79:1 — the worst pair in any
+     palette and effectively unreadable. Vanilla's accent is far lighter than
+     the other palettes', so the near-white that works on their mid-tone
+     accents cannot work here. Darkened into the same hue. */
+  --accent-foreground: oklch(0.26 0.05 92);
+  --accent-soft: oklch(0.956 0.057 92);
+  --success: oklch(0.56 0.11 152);
+  --success-soft: oklch(0.954 0.034 152);
+  --destructive: oklch(0.56 0.16 28);
+  --destructive-soft: oklch(0.954 0.03 28);
+  --border: oklch(0.913 0.024 95);
+  --input: oklch(0.913 0.024 95);
+  --ring: oklch(0.22 0.015 95);
+  --chart-1: oklch(0.22 0.015 95);
+  --chart-2: oklch(0.80 0.14 92);
+  --chart-3: oklch(0.66 0.09 162);
+  --chart-4: oklch(0.62 0.11 242);
+  --chart-5: oklch(0.72 0.06 312);
+  --sidebar: oklch(0.964 0.022 95);
+  --sidebar-foreground: oklch(0.42 0.031 95);
+  --sidebar-primary: oklch(0.22 0.015 95);
+  --sidebar-primary-foreground: oklch(0.985 0.013 95);
+  --sidebar-accent: oklch(0.998 0.011 95);
+  --sidebar-accent-foreground: oklch(0.22 0.015 95);
+  --sidebar-border: oklch(0.913 0.024 95);
+  --sidebar-ring: oklch(0.22 0.015 95);
+  --ink: oklch(0.22 0.015 95);
+  --ink-foreground: oklch(0.985 0.013 95);
+  --ink-muted: oklch(0.78 0.035 95);
+  --shadow-card: 0 1px 2px 0 oklch(0.35 0.03 95 / 0.05), 0 8px 24px -12px oklch(0.35 0.04 95 / 0.16);
+  --shadow-raised: 0 2px 6px 0 oklch(0.35 0.03 95 / 0.07), 0 18px 44px -16px oklch(0.35 0.04 95 / 0.22);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(16 16 20 / 0.34);
+}
+
+/* Linen & Clay — light. */
+:root:not(.dark).p-linen {
+  --background: oklch(0.952 0.014 70);
+  --foreground: oklch(0.21 0.012 60);
+  --card: oklch(0.984 0.007 70);
+  --card-foreground: oklch(0.21 0.012 60);
+  --popover: oklch(0.988 0.006 70);
+  --popover-foreground: oklch(0.21 0.012 60);
+  --primary: oklch(0.23 0.014 60);
+  --primary-foreground: oklch(0.985 0.008 70);
+  --primary-soft: oklch(0.932 0.025 70);
+  --secondary: oklch(0.942 0.017 70);
+  --secondary-foreground: oklch(0.21 0.012 60);
+  --muted: oklch(0.940 0.017 70);
+  --muted-foreground: oklch(0.565 0.020 70);
+  --accent: oklch(0.58 0.13 40);
+  --accent-foreground: oklch(0.99 0.004 40);
+  --accent-soft: oklch(0.940 0.036 40);
+  --success: oklch(0.56 0.11 152);
+  --success-soft: oklch(0.938 0.034 152);
+  --destructive: oklch(0.56 0.16 28);
+  --destructive-soft: oklch(0.938 0.03 28);
+  --border: oklch(0.897 0.015 70);
+  --input: oklch(0.897 0.015 70);
+  --ring: oklch(0.23 0.014 60);
+  --chart-1: oklch(0.23 0.014 60);
+  --chart-2: oklch(0.58 0.13 40);
+  --chart-3: oklch(0.66 0.09 110);
+  --chart-4: oklch(0.62 0.11 190);
+  --chart-5: oklch(0.72 0.06 260);
+  --sidebar: oklch(0.948 0.014 70);
+  --sidebar-foreground: oklch(0.42 0.020 70);
+  --sidebar-primary: oklch(0.23 0.014 60);
+  --sidebar-primary-foreground: oklch(0.985 0.008 70);
+  --sidebar-accent: oklch(0.984 0.007 70);
+  --sidebar-accent-foreground: oklch(0.21 0.012 60);
+  --sidebar-border: oklch(0.897 0.015 70);
+  --sidebar-ring: oklch(0.23 0.014 60);
+  --ink: oklch(0.23 0.014 60);
+  --ink-foreground: oklch(0.985 0.008 70);
+  --ink-muted: oklch(0.78 0.022 70);
+  --shadow-card: 0 1px 2px 0 oklch(0.35 0.03 70 / 0.05), 0 8px 24px -12px oklch(0.35 0.04 70 / 0.16);
+  --shadow-raised: 0 2px 6px 0 oklch(0.35 0.03 70 / 0.07), 0 18px 44px -16px oklch(0.35 0.04 70 / 0.22);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(16 16 20 / 0.34);
+}
+
+/* Mint Frost — light. */
+:root:not(.dark).p-mint {
+  --background: oklch(0.965 0.014 160);
+  --foreground: oklch(0.25 0.03 165);
+  --card: oklch(0.997 0.007 160);
+  --card-foreground: oklch(0.25 0.03 165);
+  --popover: oklch(0.999 0.006 160);
+  --popover-foreground: oklch(0.25 0.03 165);
+  --primary: oklch(0.30 0.045 165);
+  --primary-foreground: oklch(0.985 0.008 160);
+  --primary-soft: oklch(0.945 0.025 160);
+  --secondary: oklch(0.955 0.017 160);
+  --secondary-foreground: oklch(0.25 0.03 165);
+  --muted: oklch(0.953 0.017 160);
+  --muted-foreground: oklch(0.565 0.020 160);
+  --accent: oklch(0.62 0.11 165);
+  --accent-foreground: oklch(0.99 0.004 165);
+  --accent-soft: oklch(0.953 0.036 165);
+  --success: oklch(0.56 0.11 152);
+  --success-soft: oklch(0.951 0.034 152);
+  --destructive: oklch(0.56 0.16 28);
+  --destructive-soft: oklch(0.951 0.03 28);
+  --border: oklch(0.910 0.015 160);
+  --input: oklch(0.910 0.015 160);
+  --ring: oklch(0.30 0.045 165);
+  --chart-1: oklch(0.30 0.045 165);
+  --chart-2: oklch(0.62 0.11 165);
+  --chart-3: oklch(0.66 0.09 235);
+  --chart-4: oklch(0.62 0.11 315);
+  --chart-5: oklch(0.72 0.06 25);
+  --sidebar: oklch(0.961 0.014 160);
+  --sidebar-foreground: oklch(0.42 0.020 160);
+  --sidebar-primary: oklch(0.30 0.045 165);
+  --sidebar-primary-foreground: oklch(0.985 0.008 160);
+  --sidebar-accent: oklch(0.997 0.007 160);
+  --sidebar-accent-foreground: oklch(0.25 0.03 165);
+  --sidebar-border: oklch(0.910 0.015 160);
+  --sidebar-ring: oklch(0.30 0.045 165);
+  --ink: oklch(0.30 0.045 165);
+  --ink-foreground: oklch(0.985 0.008 160);
+  --ink-muted: oklch(0.78 0.022 160);
+  --shadow-card: 0 1px 2px 0 oklch(0.35 0.03 160 / 0.05), 0 8px 24px -12px oklch(0.35 0.04 160 / 0.16);
+  --shadow-raised: 0 2px 6px 0 oklch(0.35 0.03 160 / 0.07), 0 18px 44px -16px oklch(0.35 0.04 160 / 0.22);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(16 16 20 / 0.34);
+}
+
+/* Champagne & Slate — light. */
+:root:not(.dark).p-champagne {
+  --background: oklch(0.962 0.018 88);
+  --foreground: oklch(0.27 0.015 250);
+  --card: oklch(0.994 0.009 88);
+  --card-foreground: oklch(0.27 0.015 250);
+  --popover: oklch(0.998 0.008 88);
+  --popover-foreground: oklch(0.27 0.015 250);
+  --primary: oklch(0.31 0.02 250);
+  --primary-foreground: oklch(0.985 0.011 88);
+  --primary-soft: oklch(0.942 0.032 88);
+  --secondary: oklch(0.952 0.022 88);
+  --secondary-foreground: oklch(0.27 0.015 250);
+  --muted: oklch(0.950 0.022 88);
+  --muted-foreground: oklch(0.565 0.025 88);
+  --accent: oklch(0.66 0.09 80);
+  --accent-foreground: oklch(0.99 0.004 80);
+  --accent-soft: oklch(0.950 0.047 80);
+  --success: oklch(0.56 0.11 152);
+  --success-soft: oklch(0.948 0.034 152);
+  --destructive: oklch(0.56 0.16 28);
+  --destructive-soft: oklch(0.948 0.03 28);
+  --border: oklch(0.907 0.020 88);
+  --input: oklch(0.907 0.020 88);
+  --ring: oklch(0.31 0.02 250);
+  --chart-1: oklch(0.31 0.02 250);
+  --chart-2: oklch(0.66 0.09 80);
+  --chart-3: oklch(0.66 0.09 150);
+  --chart-4: oklch(0.62 0.11 230);
+  --chart-5: oklch(0.72 0.06 300);
+  --sidebar: oklch(0.958 0.018 88);
+  --sidebar-foreground: oklch(0.42 0.025 88);
+  --sidebar-primary: oklch(0.31 0.02 250);
+  --sidebar-primary-foreground: oklch(0.985 0.011 88);
+  --sidebar-accent: oklch(0.994 0.009 88);
+  --sidebar-accent-foreground: oklch(0.27 0.015 250);
+  --sidebar-border: oklch(0.907 0.020 88);
+  --sidebar-ring: oklch(0.31 0.02 250);
+  --ink: oklch(0.31 0.02 250);
+  --ink-foreground: oklch(0.985 0.011 88);
+  --ink-muted: oklch(0.78 0.029 88);
+  --shadow-card: 0 1px 2px 0 oklch(0.35 0.03 88 / 0.05), 0 8px 24px -12px oklch(0.35 0.04 88 / 0.16);
+  --shadow-raised: 0 2px 6px 0 oklch(0.35 0.03 88 / 0.07), 0 18px 44px -16px oklch(0.35 0.04 88 / 0.22);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(16 16 20 / 0.34);
+}
+
+/* Obsidian — dark. */
+.dark.d-obsidian {
+  --background: oklch(0.12 0.01 265);
+  --foreground: oklch(0.96 0.004 250);
+  --card: oklch(0.165 0.015 265);
+  --card-foreground: oklch(0.96 0.004 250);
+  --popover: oklch(0.18 0.016 265);
+  --popover-foreground: oklch(0.96 0.004 250);
+  --primary: oklch(0.97 0.004 250);
+  --primary-foreground: oklch(0.13 0.02 265);
+  --primary-soft: oklch(0.26 0.035 265);
+  --secondary: oklch(0.22 0.018 265);
+  --secondary-foreground: oklch(0.94 0.004 250);
+  --muted: oklch(0.22 0.018 265);
+  --muted-foreground: oklch(0.72 0.022 258);
+  --accent: oklch(0.82 0.14 62);
+  --accent-foreground: oklch(0.16 0.045 265);
+  --accent-soft: oklch(0.28 0.055 70);
+  --success: oklch(0.72 0.13 158);
+  --success-soft: oklch(0.26 0.05 160);
+  --destructive: oklch(0.68 0.15 24);
+  /* Diverged from ai-cfo-design, same defect it has in every dark palette: it
+     pairs a near-WHITE destructive-foreground with a mid orange-red
+     destructive (0.68 lightness), which measures 2.77:1 — below AA for the
+     button label it names. Each of these palettes already puts a DARK
+     foreground on its own light accent; this is that rule applied to the one
+     pair the reference missed. */
+  --destructive-foreground: oklch(0.18 0.04 25);
+  --destructive-soft: oklch(0.28 0.065 24);
+  --border: oklch(0.32 0.025 265 / 0.45);
+  --input: oklch(0.28 0.02 265 / 0.6);
+  --ring: oklch(0.97 0.004 250);
+  --chart-1: oklch(0.97 0.004 250);
+  --chart-2: oklch(0.72 0.12 258);
+  --chart-3: oklch(0.75 0.11 158);
+  --chart-4: oklch(0.71 0.145 30);
+  --chart-5: oklch(0.74 0.095 300);
+  --sidebar: oklch(0.13 0.012 265);
+  --sidebar-foreground: oklch(0.92 0.008 250);
+  --sidebar-primary: oklch(0.97 0.004 250);
+  --sidebar-primary-foreground: oklch(0.13 0.02 265);
+  --sidebar-accent: oklch(0.24 0.02 266);
+  --sidebar-accent-foreground: oklch(0.95 0.004 250);
+  --sidebar-border: oklch(0.32 0.025 265 / 0.4);
+  --sidebar-ring: oklch(0.97 0.004 250);
+  --ink: oklch(0.145 0.012 266);
+  --ink-foreground: oklch(0.98 0.003 250);
+  --ink-muted: oklch(0.78 0.018 258);
+  --shadow-card: 0 0 0 1px oklch(0.55 0.02 265 / 0.08), 0 12px 40px -18px oklch(0 0 0 / 0.75);
+  --shadow-raised: 0 0 0 1px oklch(0.65 0.02 265 / 0.1), 0 20px 60px -18px oklch(0 0 0 / 0.85), 0 0 40px -16px oklch(0.65 0.05 265 / 0.06);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(0 0 0 / 0.68);
+}
+
+/* Midnight Navy — dark.
+   Obsidian's base merged with navy's own overrides — see the note above. */
+.dark.d-navy {
+  --background: oklch(0.155 0.03 262);
+  --foreground: oklch(0.96 0.008 262);
+  --card: oklch(0.200 0.036 262);
+  --card-foreground: oklch(0.96 0.008 262);
+  --popover: oklch(0.215 0.036 262);
+  --popover-foreground: oklch(0.96 0.008 262);
+  --primary: oklch(0.97 0.006 262);
+  --primary-foreground: oklch(0.165 0.042 262);
+  --primary-soft: oklch(0.265 0.048 262);
+  --secondary: oklch(0.240 0.039 262);
+  --secondary-foreground: oklch(0.94 0.008 262);
+  --muted: oklch(0.240 0.039 262);
+  --muted-foreground: oklch(0.73 0.024 262);
+  --accent: oklch(0.75 0.13 250);
+  --accent-foreground: oklch(0.165 0.04 262);
+  --accent-soft: oklch(0.285 0.06 262);
+  --success: oklch(0.72 0.13 158);
+  --success-soft: oklch(0.26 0.05 160);
+  --destructive: oklch(0.68 0.15 24);
+  /* Diverged from ai-cfo-design, same defect it has in every dark palette: it
+     pairs a near-WHITE destructive-foreground with a mid orange-red
+     destructive (0.68 lightness), which measures 2.77:1 — below AA for the
+     button label it names. Each of these palettes already puts a DARK
+     foreground on its own light accent; this is that rule applied to the one
+     pair the reference missed. */
+  --destructive-foreground: oklch(0.18 0.04 25);
+  --destructive-soft: oklch(0.28 0.065 24);
+  --border: oklch(0.345 0.036 262 / 0.5);
+  --input: oklch(0.315 0.030 262 / 0.6);
+  --ring: oklch(0.97 0.006 262);
+  --chart-1: oklch(0.97 0.006 262);
+  --chart-2: oklch(0.75 0.13 250);
+  --chart-3: oklch(0.75 0.11 352);
+  --chart-4: oklch(0.72 0.13 62);
+  --chart-5: oklch(0.74 0.09 142);
+  --sidebar: oklch(0.167 0.030 262);
+  --sidebar-foreground: oklch(0.92 0.012 262);
+  --sidebar-primary: oklch(0.97 0.006 262);
+  --sidebar-primary-foreground: oklch(0.165 0.042 262);
+  --sidebar-accent: oklch(0.250 0.039 262);
+  --sidebar-accent-foreground: oklch(0.95 0.008 262);
+  --sidebar-border: oklch(0.345 0.036 262 / 0.42);
+  --sidebar-ring: oklch(0.97 0.004 250);
+  --ink: oklch(0.175 0.030 262);
+  --ink-foreground: oklch(0.98 0.006 262);
+  --ink-muted: oklch(0.78 0.02 262);
+  --shadow-card: 0 0 0 1px oklch(0.55 0.02 265 / 0.08), 0 12px 40px -18px oklch(0 0 0 / 0.75);
+  --shadow-raised: 0 0 0 1px oklch(0.65 0.02 265 / 0.1), 0 20px 60px -18px oklch(0 0 0 / 0.85), 0 0 40px -16px oklch(0.65 0.05 265 / 0.06);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(0 0 0 / 0.68);
+}
+
+/* Toasted Espresso — dark.
+   Obsidian's base merged with espresso's own overrides — see the note above. */
+.dark.d-espresso {
+  --background: oklch(0.16 0.014 62);
+  --foreground: oklch(0.955 0.014 86);
+  --card: oklch(0.205 0.018 62);
+  --card-foreground: oklch(0.955 0.014 86);
+  --popover: oklch(0.22 0.02 62);
+  --popover-foreground: oklch(0.955 0.014 86);
+  --primary: oklch(0.86 0.09 78);
+  --primary-foreground: oklch(0.2 0.03 62);
+  --primary-soft: oklch(0.3 0.04 66);
+  --secondary: oklch(0.26 0.022 62);
+  --secondary-foreground: oklch(0.94 0.014 86);
+  --muted: oklch(0.26 0.022 62);
+  --muted-foreground: oklch(0.74 0.028 76);
+  --accent: oklch(0.82 0.13 72);
+  --accent-foreground: oklch(0.2 0.04 60);
+  --accent-soft: oklch(0.32 0.06 70);
+  --success: oklch(0.72 0.13 158);
+  --success-soft: oklch(0.26 0.05 160);
+  --destructive: oklch(0.68 0.15 24);
+  /* Diverged from ai-cfo-design, same defect it has in every dark palette: it
+     pairs a near-WHITE destructive-foreground with a mid orange-red
+     destructive (0.68 lightness), which measures 2.77:1 — below AA for the
+     button label it names. Each of these palettes already puts a DARK
+     foreground on its own light accent; this is that rule applied to the one
+     pair the reference missed. */
+  --destructive-foreground: oklch(0.18 0.04 25);
+  --destructive-soft: oklch(0.28 0.065 24);
+  --border: oklch(0.38 0.03 66 / 0.45);
+  --input: oklch(0.34 0.026 66 / 0.6);
+  --ring: oklch(0.86 0.09 78);
+  --chart-1: oklch(0.97 0.004 250);
+  --chart-2: oklch(0.72 0.12 258);
+  --chart-3: oklch(0.75 0.11 158);
+  --chart-4: oklch(0.71 0.145 30);
+  --chart-5: oklch(0.74 0.095 300);
+  --sidebar: oklch(0.175 0.016 62);
+  --sidebar-foreground: oklch(0.92 0.016 86);
+  --sidebar-primary: oklch(0.86 0.09 78);
+  --sidebar-primary-foreground: oklch(0.2 0.03 62);
+  --sidebar-accent: oklch(0.27 0.024 64);
+  --sidebar-accent-foreground: oklch(0.95 0.014 86);
+  --sidebar-border: oklch(0.38 0.03 66 / 0.4);
+  --sidebar-ring: oklch(0.97 0.004 250);
+  --ink: oklch(0.2 0.02 62);
+  --ink-foreground: oklch(0.975 0.012 88);
+  --ink-muted: oklch(0.8 0.03 78);
+  --shadow-card: 0 0 0 1px oklch(0.55 0.02 265 / 0.08), 0 12px 40px -18px oklch(0 0 0 / 0.75);
+  --shadow-raised: 0 0 0 1px oklch(0.65 0.02 265 / 0.1), 0 20px 60px -18px oklch(0 0 0 / 0.85), 0 0 40px -16px oklch(0.65 0.05 265 / 0.06);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(0 0 0 / 0.68);
+}
+
+/* Deep Forest — dark.
+   Obsidian's base merged with forest's own overrides — see the note above. */
+.dark.d-forest {
+  --background: oklch(0.145 0.026 165);
+  --foreground: oklch(0.96 0.008 165);
+  --card: oklch(0.190 0.031 165);
+  --card-foreground: oklch(0.96 0.008 165);
+  --popover: oklch(0.205 0.031 165);
+  --popover-foreground: oklch(0.96 0.008 165);
+  --primary: oklch(0.97 0.006 165);
+  --primary-foreground: oklch(0.155 0.036 165);
+  --primary-soft: oklch(0.255 0.042 165);
+  --secondary: oklch(0.230 0.034 165);
+  --secondary-foreground: oklch(0.94 0.008 165);
+  --muted: oklch(0.230 0.034 165);
+  --muted-foreground: oklch(0.73 0.024 165);
+  --accent: oklch(0.75 0.13 160);
+  --accent-foreground: oklch(0.155 0.04 165);
+  --accent-soft: oklch(0.275 0.06 165);
+  --success: oklch(0.72 0.13 158);
+  --success-soft: oklch(0.26 0.05 160);
+  --destructive: oklch(0.68 0.15 24);
+  /* Diverged from ai-cfo-design, same defect it has in every dark palette: it
+     pairs a near-WHITE destructive-foreground with a mid orange-red
+     destructive (0.68 lightness), which measures 2.77:1 — below AA for the
+     button label it names. Each of these palettes already puts a DARK
+     foreground on its own light accent; this is that rule applied to the one
+     pair the reference missed. */
+  --destructive-foreground: oklch(0.18 0.04 25);
+  --destructive-soft: oklch(0.28 0.065 24);
+  --border: oklch(0.335 0.031 165 / 0.5);
+  --input: oklch(0.305 0.026 165 / 0.6);
+  --ring: oklch(0.97 0.006 165);
+  --chart-1: oklch(0.97 0.006 165);
+  --chart-2: oklch(0.75 0.13 160);
+  --chart-3: oklch(0.75 0.11 255);
+  --chart-4: oklch(0.72 0.13 325);
+  --chart-5: oklch(0.74 0.09 45);
+  --sidebar: oklch(0.157 0.026 165);
+  --sidebar-foreground: oklch(0.92 0.012 165);
+  --sidebar-primary: oklch(0.97 0.006 165);
+  --sidebar-primary-foreground: oklch(0.155 0.036 165);
+  --sidebar-accent: oklch(0.240 0.034 165);
+  --sidebar-accent-foreground: oklch(0.95 0.008 165);
+  --sidebar-border: oklch(0.335 0.031 165 / 0.42);
+  --sidebar-ring: oklch(0.97 0.004 250);
+  --ink: oklch(0.165 0.026 165);
+  --ink-foreground: oklch(0.98 0.006 165);
+  --ink-muted: oklch(0.78 0.02 165);
+  --shadow-card: 0 0 0 1px oklch(0.55 0.02 265 / 0.08), 0 12px 40px -18px oklch(0 0 0 / 0.75);
+  --shadow-raised: 0 0 0 1px oklch(0.65 0.02 265 / 0.1), 0 20px 60px -18px oklch(0 0 0 / 0.85), 0 0 40px -16px oklch(0.65 0.05 265 / 0.06);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(0 0 0 / 0.68);
+}
+
+/* Noir Plum — dark.
+   Obsidian's base merged with plum's own overrides — see the note above. */
+.dark.d-plum {
+  --background: oklch(0.15 0.03 310);
+  --foreground: oklch(0.96 0.008 310);
+  --card: oklch(0.195 0.036 310);
+  --card-foreground: oklch(0.96 0.008 310);
+  --popover: oklch(0.210 0.036 310);
+  --popover-foreground: oklch(0.96 0.008 310);
+  --primary: oklch(0.97 0.006 310);
+  --primary-foreground: oklch(0.160 0.042 310);
+  --primary-soft: oklch(0.260 0.048 310);
+  --secondary: oklch(0.235 0.039 310);
+  --secondary-foreground: oklch(0.94 0.008 310);
+  --muted: oklch(0.235 0.039 310);
+  --muted-foreground: oklch(0.73 0.024 310);
+  --accent: oklch(0.76 0.12 320);
+  --accent-foreground: oklch(0.160 0.04 310);
+  --accent-soft: oklch(0.280 0.06 310);
+  --success: oklch(0.72 0.13 158);
+  --success-soft: oklch(0.26 0.05 160);
+  --destructive: oklch(0.68 0.15 24);
+  /* Diverged from ai-cfo-design, same defect it has in every dark palette: it
+     pairs a near-WHITE destructive-foreground with a mid orange-red
+     destructive (0.68 lightness), which measures 2.77:1 — below AA for the
+     button label it names. Each of these palettes already puts a DARK
+     foreground on its own light accent; this is that rule applied to the one
+     pair the reference missed. */
+  --destructive-foreground: oklch(0.18 0.04 25);
+  --destructive-soft: oklch(0.28 0.065 24);
+  --border: oklch(0.340 0.036 310 / 0.5);
+  --input: oklch(0.310 0.030 310 / 0.6);
+  --ring: oklch(0.97 0.006 310);
+  --chart-1: oklch(0.97 0.006 310);
+  --chart-2: oklch(0.76 0.12 320);
+  --chart-3: oklch(0.75 0.11 40);
+  --chart-4: oklch(0.72 0.13 110);
+  --chart-5: oklch(0.74 0.09 190);
+  --sidebar: oklch(0.162 0.030 310);
+  --sidebar-foreground: oklch(0.92 0.012 310);
+  --sidebar-primary: oklch(0.97 0.006 310);
+  --sidebar-primary-foreground: oklch(0.160 0.042 310);
+  --sidebar-accent: oklch(0.245 0.039 310);
+  --sidebar-accent-foreground: oklch(0.95 0.008 310);
+  --sidebar-border: oklch(0.340 0.036 310 / 0.42);
+  --sidebar-ring: oklch(0.97 0.004 250);
+  --ink: oklch(0.170 0.030 310);
+  --ink-foreground: oklch(0.98 0.006 310);
+  --ink-muted: oklch(0.78 0.02 310);
+  --shadow-card: 0 0 0 1px oklch(0.55 0.02 265 / 0.08), 0 12px 40px -18px oklch(0 0 0 / 0.75);
+  --shadow-raised: 0 0 0 1px oklch(0.65 0.02 265 / 0.1), 0 20px 60px -18px oklch(0 0 0 / 0.85), 0 0 40px -16px oklch(0.65 0.05 265 / 0.06);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(0 0 0 / 0.68);
+}
+
+/* Black & white — dark.
+   Obsidian's base merged with mono's own overrides — see the note above. */
+.dark.d-mono {
+  --background: oklch(0.16 0 0);
+  --foreground: oklch(0.96 0 0);
+  --card: oklch(0.215 0 0);
+  --card-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.215 0 0);
+  --popover-foreground: oklch(0.96 0 0);
+  --primary: oklch(0.96 0 0);
+  --primary-foreground: oklch(0.16 0 0);
+  --primary-soft: oklch(0.28 0 0);
+  --secondary: oklch(0.26 0 0);
+  --secondary-foreground: oklch(0.95 0 0);
+  --muted: oklch(0.26 0 0);
+  --muted-foreground: oklch(0.74 0 0);
+  --accent: oklch(0.85 0 0);
+  --accent-foreground: oklch(0.16 0 0);
+  --accent-soft: oklch(0.3 0 0);
+  --success: oklch(0.88 0 0);
+  --success-soft: oklch(0.3 0 0);
+  --destructive: oklch(0.7 0 0);
+  --destructive-foreground: oklch(0.15 0 0);
+  --destructive-soft: oklch(0.32 0 0);
+  --border: oklch(0.33 0 0);
+  --input: oklch(0.33 0 0);
+  --ring: oklch(0.96 0 0);
+  --chart-1: oklch(0.96 0 0);
+  --chart-2: oklch(0.8 0 0);
+  --chart-3: oklch(0.66 0 0);
+  --chart-4: oklch(0.52 0 0);
+  --chart-5: oklch(0.4 0 0);
+  --sidebar: oklch(0.16 0 0);
+  --sidebar-foreground: oklch(0.92 0 0);
+  --sidebar-primary: oklch(0.96 0 0);
+  --sidebar-primary-foreground: oklch(0.16 0 0);
+  --sidebar-accent: oklch(0.235 0 0);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.33 0 0);
+  --sidebar-ring: oklch(0.96 0 0);
+  --ink: oklch(0.12 0 0);
+  --ink-foreground: oklch(0.97 0 0);
+  --ink-muted: oklch(0.7 0 0);
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.5), 0 10px 30px -14px rgb(0 0 0 / 0.6);
+  --shadow-raised: 0 2px 8px 0 rgb(0 0 0 / 0.55), 0 22px 50px -18px rgb(0 0 0 / 0.65);
+  /* Neutral black rather than Signature's blue-tinted scrim: this palette's
+     canvas is not navy, and a backdrop that dims toward a different hue is
+     visible as a colour cast on every dialog. */
+  --scrim: rgb(0 0 0 / 0.68);
 }
 
 @layer base {
@@ -175,17 +1054,241 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    /* Deliberately 14px, not the design's 16px browser default. This app's
+       whole type scale is hardcoded against a 14px base — text-[13px],
+       text-[13.5px] and text-[11px] appear across all 19 pages — so moving the
+       base reflows every table and metric tile for no design gain, since the
+       design's own px sizes survive either way. */
     font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.011em;
+  }
+
+  /* The :not(.uppercase) guard is load-bearing, not caution. Most h2/h3
+     elements in this app are 13px uppercase eyebrow labels carrying an
+     explicit tracking-[0.08em]; a display face at that size with -0.02em
+     fighting positive tracking looks like a rendering bug. The guard matches
+     Tailwind's literal `uppercase` class, so this rule ships with no JSX
+     changes. The cleaner fix — demoting those eyebrows to <div>, which is what
+     they actually are — is a separate change. */
+  h1,
+  h2:not(.uppercase),
+  h3:not(.uppercase) {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
   }
 }
 
+/* No border. The design's card is a 0.032-lightness gap from the canvas held
+   together by a long, diffuse, negative-spread shadow — so this and the
+   --shadow-card change above are one edit in two places. Keep the border with
+   the new shadow and you get a hard-edged Material card wearing fintech
+   colours; drop the border while keeping the old tight `0 1px 3px 1px` shadow
+   and the card vanishes into the page. 64 usages across 32 files. */
 @utility gcard {
   background: var(--color-card);
-  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
+}
+
+/* Tabular figures for money columns. Proportional digits make a rupee column
+   ragged down the right edge, which is the one place a finance table has to be
+   scannable. */
+@utility num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* The one surface darker than the canvas in both themes. shadow-RAISED, not
+   shadow-card: an ink panel that sits flat reads as a hole. */
+@utility inkcard {
+  background: var(--color-ink);
+  color: var(--color-ink-foreground);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised);
+}
+
+@utility lift {
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-raised);
+  }
+}
+
+@utility icon-tile {
+  display: grid;
+  place-items: center;
+  height: 2.25rem;
+  width: 2.25rem;
+  flex: none;
+  border-radius: 0.75rem;
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+}
+
+/* The keyframes are not optional decoration: an unknown Tailwind v4 utility
+   compiles to nothing with no build warning, so a `rise` without `rise-in`
+   fails silently and looks like a styling bug rather than an error. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* `backwards`, NOT `both` — and this is a correctness fix, not a preference.
+   `both` retains the final keyframe forever, and that keyframe sets
+   `transform: translateY(0)`. A transform other than `none` makes the element
+   a containing block for every `position: fixed` DESCENDANT, so this utility
+   on DashboardChrome's content wrapper silently re-anchored any fixed overlay
+   inside a page to the content column — offset by the sidebar, clipped by its
+   padding — instead of the viewport. A drawer built to modern CSS rendered in
+   the wrong place for a reason nothing in its own file could explain.
+   `backwards` still applies the opening frame before the animation starts, so
+   the entrance is identical; it just lets the element return to `transform:
+   none` when the animation ends, which is the state it was always meant to
+   settle into. */
+@utility rise {
+  animation: rise-in 460ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* The ask popup rising from the bottom edge.
+   Separate from `rise` because the distances are not interchangeable: `rise`
+   moves 8px, which is right for content settling into place and invisible on a
+   sheet that is meant to read as arriving from off-screen. The design animates
+   its overlay `translate-y-6 -> translate-y-0` over 300ms; this is that.
+   `backwards` for the same containing-block reason spelled out above — the
+   composer inside this panel is `position: sticky`, and a retained transform
+   here would break it. */
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility sheet-in {
+  animation: sheet-in 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* The ask composer's travelling ring.
+   ==========================================================================
+   Discoverability, not decoration. The AI CFO page is one long answer column
+   with a single control at the bottom, and that control is a gcard on a canvas
+   — same family of value, no border since gcard dropped it, so on the dark
+   theme it reads as a slightly different rectangle rather than as the place
+   you type. A moving highlight is the cheapest way to say "this is the input"
+   without adding copy that repeats the placeholder.
+
+   --chart-2 rather than --primary: primary is monochrome in both themes
+   (near-black on light, near-white on dark), and a monochrome ring cannot
+   glow — it just outlines. chart-2 is the one palette entry carrying real
+   chroma in both themes, so this stays a brand colour rather than an invented
+   one.
+
+   The ring is drawn by masking a conic gradient down to a 1.5px band:
+   two full-size mask layers, the inner one clipped to the content box, XORed
+   so only the padding band survives. The alternative — a blurred element
+   behind the card — is invisible here, because the card it would sit behind
+   is opaque.
+
+   @property is what makes the angle animatable: a bare custom property
+   interpolates as a string and the gradient would snap rather than sweep.
+   Where it is unsupported the ring simply sits still, which is a static
+   highlight and still does the job. The global prefers-reduced-motion block
+   below freezes it for the same outcome, deliberately. */
+@property --ask-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes ask-ring-spin {
+  to {
+    --ask-angle: 360deg;
+  }
+}
+
+@utility askglow {
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -1.5px;
+    /* Not `inherit`: the ring sits 1.5px outside the card, so matching the
+       card's radius exactly would pinch the corners inward. */
+    border-radius: calc(var(--radius-lg) + 1.5px);
+    padding: 1.5px;
+    /* TWO opposed arcs, not one.
+       The composer is roughly 20:1, and a conic sweep on a box that flat is
+       wildly uneven: the top and bottom edges each swallow ~170deg of the
+       rotation while the short left and right edges take ~8deg apiece. With a
+       single arc the highlight is bright along a long edge and then vanishes
+       for a quarter of the cycle — a cue that blinks out reads as a rendering
+       fault, not an invitation. Placing the second arc 180deg away keeps one
+       of them on a long edge at every angle. */
+    background: conic-gradient(
+      from var(--ask-angle),
+      transparent 0deg,
+      var(--color-chart-2) 30deg,
+      color-mix(in oklch, var(--color-chart-2) 40%, transparent) 70deg,
+      transparent 120deg,
+      transparent 180deg,
+      var(--color-chart-2) 210deg,
+      color-mix(in oklch, var(--color-chart-2) 40%, transparent) 250deg,
+      transparent 300deg,
+      transparent 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: ask-ring-spin 6s linear infinite;
+    /* The ring paints over the card's own background but must never eat a
+       click meant for the input or the send button. */
+    pointer-events: none;
+    opacity: 0.85;
+    transition: opacity 220ms ease;
+  }
+
+  /* Focused, the ring firms up and the card lifts on a soft chroma shadow —
+     the state that says "typing here goes somewhere". */
+  &:focus-within::before {
+    opacity: 1;
+    animation-duration: 2.8s;
+  }
+
+  &:focus-within {
+    box-shadow:
+      var(--shadow-raised),
+      0 0 0 4px color-mix(in oklch, var(--color-chart-2) 14%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ==========================================================================
@@ -195,9 +1298,16 @@
    from ai-cfo-design/src/components/console.tsx so those pages pick up
    the new look without per-page JSX changes.
    ========================================================================== */
+/* A pill, and not for fashion. At --radius 1rem the derived --radius-md is
+   14px, which on a 36px-tall button is an awkward half-pill that reads as a
+   mistake — so this height/radius pair had to be hand-set the moment the
+   radius token moved. The design's Button is an unambiguous h-10 rounded-full,
+   and .btn is a cfo-frontend-only compatibility layer with no upstream to sync
+   from. Highest exposure is connections/page.js, 23 of the 60 uses in the
+   repo. */
 .btn {
   display: inline-flex;
-  height: 36px;
+  height: 40px;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -210,7 +1320,7 @@
   background: transparent;
   border: 1px solid transparent;
   padding: 0 16px;
-  border-radius: var(--radius-md);
+  border-radius: 9999px;
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .btn svg {
@@ -402,7 +1512,8 @@ textarea.input {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: color-mix(in srgb, var(--color-foreground) 45%, transparent);
+  /* See --scrim: deriving a backdrop from --foreground inverts it in dark. */
+  background: var(--color-scrim);
 }
 .dialog {
   width: min(440px, 100%);

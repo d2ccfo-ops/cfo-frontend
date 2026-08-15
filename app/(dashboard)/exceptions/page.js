@@ -177,7 +177,7 @@ export default function ExceptionsPage() {
               <AlertCard
                 // Server rows carry a stable id; client-derived ones are
                 // identified by their title, which is unique within that set.
-                key={a.id ?? a.title}
+                key={a.id}
                 severity={a.severity}
                 title={a.title}
                 description={a.description}

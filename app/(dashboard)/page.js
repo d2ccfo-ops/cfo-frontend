@@ -4,6 +4,7 @@ import { useAuth, useOrganization } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
 import useFlipList from "@/components/hooks/useFlipList";
 import TopNav from "@/components/layout/TopNav";
+import { AskCfoButton } from "@/components/ai/AskCfoOverlay";
 import MetricCard from "@/components/ui/MetricCard";
 import MetricCardSkeleton from "@/components/ui/MetricCardSkeleton";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
@@ -14,7 +15,7 @@ import FinancialChart from "@/components/charts/FinancialChart";
 import RevenueTrendChart from "@/components/charts/RevenueTrendChart";
 import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { Icon, PLUS_PATHS } from "@/components/icons";
+import { Icon, PLUS_PATHS, WALLET_PATHS, TRENDING_UP_PATHS, PERCENT_PATHS } from "@/components/icons";
 import Link from "next/link";
 import AbbrCurrency from "@/components/ui/AbbrCurrency";
 import TableSkeleton from "@/components/ui/TableSkeleton";
@@ -53,64 +54,86 @@ function comparisonLabel(comparison) {
 //
 // `needs` is the honest fallback: what has to be connected for this card to
 // have an answer. `formula` is what it would compute once it does.
-const METRICS_RAW = [
+// The three that lead the page, rendered as the "Today at a glance" hero row
+// rather than as cards in the grid below. They are NOT in the pinnable set:
+// a founder can reorder and remove the key metrics, but cash, revenue and
+// margin are the page's reason for existing and are always the first thing on
+// it. That also means they never appear in the "Add metric card" picker —
+// offering to add something already on screen is how a picker starts lying.
+const HERO_METRICS = [
   { label: "Available cash", goodDirection: "up",
+    snapshotKey: "available_cash",
     needs: "Connect a bank account and set its opening balance",
-    formula: "Opening balance + credits − debits, per bank account (§44)" },
+    formula: "Opening balance + credits \u2212 debits, per bank account (\u00a744)" },
   { label: "Net revenue (MTD)", goodDirection: "up",
+    // The DAILY flow, not the MTD total, and for two reasons. Only
+    // net_revenue_day is in DAILY_SNAPSHOT_METRICS, so an MTD key would be
+    // filtered out by /metrics/snapshot-history and the line would silently
+    // never appear. And a cumulative MTD series only ever rises — it would
+    // draw a reassuring climb under a figure that had just fallen.
+    snapshotKey: "net_revenue_day",
     needs: "Connect a sales channel",
-    formula: "Gross sales − discounts − returns − GST (§11)" },
+    formula: "Gross sales \u2212 discounts \u2212 returns \u2212 GST (\u00a711)" },
+  { label: "Contribution margin", goodDirection: "up",
+    snapshotKey: "cm3_pct_28d",
+    needs: "Product costs, plus a sales channel",
+    formula: "Net revenue less COGS, fulfilment, fees and ads (\u00a736)" },
+];
+
+// Pinned by default. Deliberately seven, and deliberately NOT the seven that
+// happen to be cheapest to compute: these are the ones a founder acts on in a
+// week. Cash, revenue and margin are absent because they are in the hero row
+// above; everything else moved to EXTRA_METRICS and is one click away in the
+// picker.
+const METRICS_RAW = [
   { label: "Cash received (MTD)", goodDirection: "up",
     needs: "Connect a bank account",
-    formula: "Matched bank credits over the period (§44)" },
-  { label: "Contribution margin", goodDirection: "up",
-    needs: "Product costs, plus a sales channel",
-    formula: "Net revenue less COGS, fulfilment, fees and ads (§36)" },
+    formula: "Matched bank credits over the period (\u00a744)" },
   { label: "Pending settlements", goodDirection: "down",
     needs: "Connect Razorpay or a marketplace settlement feed",
-    formula: "Expected net settlement − settled amount, aged (§45)" },
+    formula: "Expected net settlement \u2212 settled amount, aged (\u00a745)" },
   { label: "Ad spend (MTD)", goodDirection: "down",
     needs: "Connect Meta Ads or Google Ads",
     formula: "Spend across connected ad accounts over the period" },
   { label: "RTO rate", goodDirection: "down",
     needs: "Connect a courier (Shiprocket, Delhivery or ClickPost)",
-    formula: "RTO shipments ÷ dispatched shipments" },
+    formula: "RTO shipments \u00f7 dispatched shipments" },
   { label: "Refund rate", goodDirection: "down",
     needs: "Connect a sales channel",
-    formula: "Refunded value ÷ tax-exclusive revenue (§66)" },
-  { label: "Upcoming payments", goodDirection: "down",
-    needs: "Connect an accounting system (Zoho Books)",
-    formula: "Invoice total − payments − credit notes, aged by due date (§57)" },
-  { label: "Data freshness", goodDirection: "up",
-    needs: "Connect at least one source",
-    formula: "Last completed sync per connection" },
+    formula: "Refunded value \u00f7 tax-exclusive revenue (\u00a766)" },
+  { label: "Orders (MTD)", goodDirection: "up",
+    needs: "Connect a sales channel",
+    formula: "Orders placed over the period" },
+  { label: "Marketing efficiency (ROAS)", goodDirection: "up",
+    needs: "Connect an ad account and a sales channel",
+    formula: "Net revenue \u00f7 ad spend, blended" },
 ];
 
 // Not pinned by default — offered via the "Add metric card" picker below,
 // matching ai-cfo-design's KEY_METRICS/EXTRA_METRICS split (its Overview
 // route lets a founder pin/unpin which cards show).
 const EXTRA_METRICS = [
+  { label: "Upcoming payments", goodDirection: "down",
+    needs: "Connect an accounting system (Zoho Books)",
+    formula: "Invoice total \u2212 payments \u2212 credit notes, aged by due date (\u00a757)" },
+  { label: "Data freshness", goodDirection: "up",
+    needs: "Connect at least one source",
+    formula: "Last completed sync per connection" },
   { label: "Gross sales (MTD)", goodDirection: "up",
     needs: "Connect a sales channel",
-    formula: "Order value before discounts and tax (§5)" },
+    formula: "Order value before discounts and tax (\u00a75)" },
   { label: "Average order value", goodDirection: "up",
     needs: "Connect a sales channel",
-    formula: "Gross sales ÷ order count (§64)" },
+    formula: "Gross sales \u00f7 order count (\u00a764)" },
   { label: "Inventory value", goodDirection: "up",
     needs: "Connect a sales channel that reports stock",
-    formula: "Retail price × quantity on hand" },
-  { label: "Marketing efficiency (ROAS)", goodDirection: "up",
-    needs: "Connect an ad account and a sales channel",
-    formula: "Net revenue ÷ ad spend, blended" },
+    formula: "Retail price \u00d7 quantity on hand" },
   { label: "Burn rate", goodDirection: "down",
     needs: "Connect a bank account",
-    formula: "Bank debits − credits, annualised monthly (§55)" },
+    formula: "Bank debits \u2212 credits, annualised monthly (\u00a755)" },
   { label: "Runway", goodDirection: "up",
     needs: "Connect a bank account",
-    formula: "Available cash ÷ monthly net burn (§85)" },
-  { label: "Orders (MTD)", goodDirection: "up",
-    needs: "Connect a sales channel",
-    formula: "Orders placed over the period" },
+    formula: "Available cash \u00f7 monthly net burn (\u00a785)" },
 ];
 
 // The Overview's charts and product tables are all live now, so the mock
@@ -148,6 +171,9 @@ function forPeriod(label, preset) {
 // layout saved months ago still picks up today's copy, evidence rows and spec
 // references, and a card this build no longer ships is dropped rather than
 // rendering an empty tile.
+// Returns null when the saved layout is STALE and should be discarded in
+// favour of the current defaults — the caller treats null as "never
+// customised".
 function orderFromLabels(labels) {
   const catalogue = new Map([...METRICS_RAW, ...EXTRA_METRICS].map((m) => [m.label, m]));
   const restored = labels.map((l) => catalogue.get(l)).filter(Boolean);
@@ -155,7 +181,20 @@ function orderFromLabels(labels) {
   // renamed or retired, which is a broken layout rather than a deliberate one —
   // fall back to the default set instead of showing a blank dashboard. A user
   // who genuinely removed every card saved an empty list, and that is honoured.
-  if (labels.length > 0 && restored.length === 0) return METRICS_RAW;
+  if (labels.length > 0 && restored.length === 0) return null;
+  // A saved layout that names a card no longer in the catalogue was written by
+  // an older version of this page. Right now there is exactly one way that
+  // happens: cash, net revenue and contribution margin moved out of the grid
+  // and into the "Today at a glance" hero row, so a pre-move layout still lists
+  // them and they silently vanish here.
+  //
+  // Honouring the remnant is the wrong call. What is left is not a set anyone
+  // chose — it is an old default with three holes punched in it, which is why
+  // this page kept showing Gross sales and Average order value as though they
+  // were headline metrics. Discard it and use the current defaults; the moment
+  // the founder reorders or adds anything, that choice saves normally and is
+  // respected from then on.
+  if (restored.length !== labels.length) return null;
   return restored;
 }
 
@@ -176,6 +215,127 @@ function netRevenueBridge(p) {
   return `${parts.join("  ")}  =  ${rupees(p.netRevenue)} net revenue`;
 }
 
+// "Today at a glance" — the design's HeroMetric, and the first consumer of the
+// ink token family.
+//
+// Two things here are deliberately NOT the design.
+//
+// The sparkline. ai-cfo-design hardcodes HERO_SERIES = { "Available cash":
+// [14.2, 15.1, 14.6, ...] } — six invented points per metric. The real series
+// is GET /metrics/snapshot-history, which only has a point for each night the
+// capture job actually ran. So the line is drawn from measured history or it
+// is not drawn at all: below MIN_SPARK_POINTS the card renders without one,
+// because two points joined by a straight line is not a trend, it is a
+// decoration that looks like evidence.
+//
+// The status pill. The design carries status/statusTone ("On track", "Watch",
+// "Needs attention") — a judgement no endpoint makes. The change chip, which
+// IS measured, does that work instead.
+const MIN_SPARK_POINTS = 4;
+
+const HERO_ICONS = {
+  "Available cash": WALLET_PATHS,
+  "Net revenue (MTD)": TRENDING_UP_PATHS,
+  "Contribution margin": PERCENT_PATHS,
+};
+
+function Sparkline({ points, tone }) {
+  if (!points || points.length < MIN_SPARK_POINTS) return null;
+  const w = 132;
+  const h = 44;
+  const lo = Math.min(...points);
+  const hi = Math.max(...points);
+  // A flat series would divide by zero and, worse, would draw a line through
+  // the middle implying stability it has not measured. Draw it on the baseline.
+  const span = hi - lo || 1;
+  const step = w / (points.length - 1);
+  const coords = points.map((v, i) => [i * step, h - ((v - lo) / span) * (h - 6) - 3]);
+  const line = coords.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const area = `${line} L${w} ${h} L0 ${h} Z`;
+  const last = coords[coords.length - 1];
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" aria-hidden="true" className="flex-none">
+      <path d={area} fill={tone} fillOpacity="0.12" />
+      <path d={line} stroke={tone} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r="2.6" fill={tone} />
+    </svg>
+  );
+}
+
+function HeroMetric({ m, ink, points, onEvidence }) {
+  // Derived exactly as MetricCard derives it, and derived rather than read off
+  // the object because there is no `changeTone` field to read — the enrichment
+  // emits `changeDirection` ("up"/"down"/"flat") and the metric carries its own
+  // `goodDirection`, because down is good for RTO rate and bad for cash. An
+  // earlier version of this component read m.changeTone, got undefined, and
+  // rendered every hero change green — including a 9.6% fall in revenue.
+  const isGood = m.changeDirection === "flat" || m.changeDirection === undefined
+    ? true
+    : m.changeDirection === (m.goodDirection ?? "up");
+  const negative = !isGood;
+  const tone = ink
+    ? "var(--color-ink-foreground)"
+    : negative
+      ? "var(--color-destructive)"
+      : "var(--color-success)";
+  return (
+    <div className={`lift flex flex-col p-7 ${ink ? "inkcard" : "gcard"}`}>
+      <div className="flex items-center gap-3">
+        <span
+          className="icon-tile"
+          style={ink ? { background: "color-mix(in oklab, var(--color-ink-foreground) 12%, transparent)", color: "var(--color-ink-foreground)" } : undefined}
+        >
+          <Icon paths={HERO_ICONS[m.label] ?? WALLET_PATHS} size={18} />
+        </span>
+        <span className={`text-[13px] font-medium ${ink ? "text-ink-muted" : "text-muted-foreground"}`}>
+          {m.label}
+        </span>
+      </div>
+
+      <div className="mt-5 flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className={`num whitespace-nowrap text-[26px] font-semibold leading-tight sm:text-[32px] lg:text-[40px] ${ink ? "text-ink-foreground" : "text-foreground"}`}>
+            {m.value}
+          </div>
+          {m.change ? (
+            <div className="mt-3 flex items-center gap-2">
+              <span
+                className={`num flex-none rounded-full px-2 py-0.5 text-[12px] font-medium ${
+                  ink
+                    ? "text-ink-foreground"
+                    : negative
+                      ? "bg-destructive-soft text-destructive"
+                      : "bg-success-soft text-success"
+                }`}
+                style={ink ? { background: "color-mix(in oklab, var(--color-ink-foreground) 14%, transparent)" } : undefined}
+              >
+                {m.change}
+              </span>
+              <span className={`truncate text-xs ${ink ? "text-ink-muted" : "text-muted-foreground"}`}>
+                {m.note}
+              </span>
+            </div>
+          ) : null}
+        </div>
+        <Sparkline points={points} tone={tone} />
+      </div>
+
+      <div className="mt-6 flex items-center justify-between">
+        <span className={`text-xs ${ink ? "text-ink-muted" : "text-muted-foreground"}`}>{m.updated}</span>
+        {m.evidence ? (
+          <button
+            type="button"
+            onClick={onEvidence}
+            className={`cursor-pointer text-xs font-medium underline-offset-4 hover:underline ${ink ? "text-ink-foreground" : "text-foreground"}`}
+          >
+            Evidence
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function LiveProductTable({ title, subtitle, rows, loading, footnote }) {
   // §40 asks for refund % per SKU. Shown only when something was actually
   // returned in the period, so a clean month doesn't carry a column of zeroes.
@@ -185,54 +345,56 @@ function LiveProductTable({ title, subtitle, rows, loading, footnote }) {
     <div className="gcard p-5">
       <div className="text-base font-medium text-foreground">{title}</div>
       <div className="mb-2.5 text-xs text-muted-foreground">{subtitle}</div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th>Units</th>
-            <th>Net revenue</th>
-            {showReturns ? <th>Returns</th> : null}
-            <th>CM0</th>
-          </tr>
-        </thead>
-        {loading ? (
-          <TableSkeleton rows={5} columns={columns} />
-        ) : (
-          <tbody>
-            {rows.map((p) => (
-              <tr key={p.sku}>
-                <td className="max-w-[220px] truncate" title={p.productName}>{p.productName}</td>
-                {/* Units net of returns — a product returned as often as it
-                    sells shouldn't read as a bestseller. */}
-                <td title={p.unitsRefunded ? `${p.unitsSold} sold − ${p.unitsRefunded} returned` : undefined}>
-                  {p.units.toLocaleString("en-IN")}
-                </td>
-                {/* Hovering shows how the billed figure becomes the revenue
-                    figure. "3 x ₹899 = ₹2,697" is the number a founder has in
-                    their head; ₹2,618 with no bridge to it reads as a bug, when
-                    the ₹79 gap is GST they collect for the state and remit. */}
-                <td title={netRevenueBridge(p)}><AbbrCurrency value={p.netRevenue} /></td>
-                {showReturns ? (
-                  <td className={p.refundRatePct > 5 ? "font-medium text-destructive" : "text-muted-foreground"}>
-                    {p.refundRatePct ? `${p.refundRatePct}%` : "—"}
+      <div className="overflow-x-auto">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Units</th>
+              <th>Net revenue</th>
+              {showReturns ? <th>Returns</th> : null}
+              <th>CM0</th>
+            </tr>
+          </thead>
+          {loading ? (
+            <TableSkeleton rows={5} columns={columns} />
+          ) : (
+            <tbody>
+              {rows.map((p) => (
+                <tr key={p.sku}>
+                  <td className="max-w-[220px] truncate" title={p.productName}>{p.productName}</td>
+                  {/* Units net of returns — a product returned as often as it
+                      sells shouldn't read as a bestseller. */}
+                  <td title={p.unitsRefunded ? `${p.unitsSold} sold − ${p.unitsRefunded} returned` : undefined}>
+                    {p.units.toLocaleString("en-IN")}
                   </td>
-                ) : null}
-                <td
-                  className="font-medium"
-                  style={{ color: p.cm0 == null ? undefined : p.cm0 < 0 ? "var(--color-destructive)" : "var(--color-primary)" }}
-                >
-                  {p.cm0 == null ? <span className="text-muted-foreground">—</span> : `${p.cm0Pct}%`}
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={columns} className="py-6 text-center text-muted-foreground">No orders in this period.</td>
-              </tr>
-            ) : null}
-          </tbody>
-        )}
-      </table>
+                  {/* Hovering shows how the billed figure becomes the revenue
+                      figure. "3 x ₹899 = ₹2,697" is the number a founder has in
+                      their head; ₹2,618 with no bridge to it reads as a bug, when
+                      the ₹79 gap is GST they collect for the state and remit. */}
+                  <td title={netRevenueBridge(p)}><AbbrCurrency value={p.netRevenue} /></td>
+                  {showReturns ? (
+                    <td className={p.refundRatePct > 5 ? "font-medium text-destructive" : "text-muted-foreground"}>
+                      {p.refundRatePct ? `${p.refundRatePct}%` : "—"}
+                    </td>
+                  ) : null}
+                  <td
+                    className="font-medium"
+                    style={{ color: p.cm0 == null ? undefined : p.cm0 < 0 ? "var(--color-destructive)" : "var(--color-primary)" }}
+                  >
+                    {p.cm0 == null ? <span className="text-muted-foreground">—</span> : `${p.cm0Pct}%`}
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={columns} className="py-6 text-center text-muted-foreground">No orders in this period.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          )}
+        </table>
+      </div>
       {footnote ? <div className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">{footnote}</div> : null}
     </div>
   );
@@ -252,6 +414,10 @@ export default function OverviewPage() {
   const [liveAdEfficiency, setLiveAdEfficiency] = useState(null);
   const [liveSales, setLiveSales] = useState(null);
   const [liveFreshness, setLiveFreshness] = useState(null);
+  // Real captured history for the hero sparklines, keyed by snapshot metric.
+  // Empty until the nightly job has run enough nights; the cards render
+  // without a line rather than with an invented one.
+  const [heroSeries, setHeroSeries] = useState({});
   const [liveInventoryValue, setLiveInventoryValue] = useState(null);
   const [liveContribution, setLiveContribution] = useState(null);
   const [liveLadder, setLiveLadder] = useState(null);
@@ -305,6 +471,10 @@ export default function OverviewPage() {
   // page load doesn't immediately PUT back the layout it just fetched, and so a
   // user who never customises never has a row created for them at all.
   const persistedOrderRef = useRef(null);
+  // Set only while migrating away from a layout saved before the hero row
+  // existed; carries what the server still has so the save effect can see a
+  // difference and clean it up. Cleared immediately after.
+  const staleLayoutRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -320,13 +490,23 @@ export default function OverviewPage() {
           const { cardOrder } = await res.json();
           restored = cardOrder ? orderFromLabels(cardOrder) : null;
           if (restored) setPinned(restored);
+          // A stored layout that orderFromLabels rejected: seed the "last
+          // persisted" ref with what the SERVER still holds, not with the
+          // defaults we are about to render. The two now differ, so the save
+          // effect fires once and overwrites the stale row. Seeding it with the
+          // defaults instead would look consistent and quietly leave the old
+          // layout in the database, re-migrating on every single page load.
+          if (cardOrder?.length > 0 && restored === null) {
+            staleLayoutRef.current = labelKey(cardOrder.map((label) => ({ label })));
+          }
         }
       } catch {
         // Layout is a preference, not data. If it can't be reached the page
         // still works on the shipped default rather than showing an error.
       } finally {
         if (!cancelled) {
-          persistedOrderRef.current = labelKey(restored ?? METRICS_RAW);
+          persistedOrderRef.current = staleLayoutRef.current ?? labelKey(restored ?? METRICS_RAW);
+          staleLayoutRef.current = null;
           setLayoutLoaded(true);
         }
       }
@@ -412,7 +592,7 @@ export default function OverviewPage() {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [revenueRes, rtoRes, cashRes, availableCashRes, adSpendRes, adEfficiencyRes, salesRes, freshnessRes, inventoryValueRes, contributionRes, ladderRes, productsRes, burnRes, payablesRes, reconRes, anomaliesRes] = await Promise.all([
+        const [revenueRes, rtoRes, cashRes, availableCashRes, adSpendRes, adEfficiencyRes, salesRes, freshnessRes, inventoryValueRes, contributionRes, ladderRes, productsRes, burnRes, payablesRes, reconRes, anomaliesRes, snapshotRes] = await Promise.all([
           fetch(`${api}/metrics/revenue${dateQuery}`, authed),
           fetch(`${api}/metrics/rto-rate${dateQuery}`, authed),
           fetch(`${api}/metrics/cash-received${dateQuery}`, authed),
@@ -435,6 +615,10 @@ export default function OverviewPage() {
           // on its own trailing-28-day window, so scoping to the picker
           // would hide findings whose window doesn't line up with it.
           fetch(`${api}/anomalies`, authed),
+          // Captured nightly history, for the hero sparklines. 30 days
+          // requested; far fewer usually come back, and that is the point —
+          // the line is only drawn from nights that were actually measured.
+          fetch(`${api}/metrics/snapshot-history?days=30`, authed),
         ]);
         if (cancelled) return;
         if (revenueRes.ok) setLiveRevenue(await revenueRes.json());
@@ -445,6 +629,24 @@ export default function OverviewPage() {
         if (adEfficiencyRes.ok) setLiveAdEfficiency(await adEfficiencyRes.json());
         if (salesRes.ok) setLiveSales(await salesRes.json());
         if (freshnessRes.ok) setLiveFreshness(await freshnessRes.json());
+        if (snapshotRes.ok) {
+          const snap = await snapshotRes.json();
+          // Shape is { series: [{ metric: DailyMetricSpec, points: [...] }] },
+          // already ordered oldest-first by periodStart, which is the order the
+          // sparkline draws in. A point whose value is null was captured but
+          // not measurable that night; dropping it leaves a shorter real series
+          // rather than a line through a gap that was never observed.
+          const byKey = {};
+          for (const row of snap.series ?? []) {
+            const key = row?.metric?.key;
+            if (!key) continue;
+            const pts = (row.points ?? [])
+              .map((pt) => (pt.value ?? pt.valueNumeric))
+              .filter((v) => typeof v === "number" && Number.isFinite(v));
+            if (pts.length) byKey[key] = pts;
+          }
+          setHeroSeries(byKey);
+        }
         if (inventoryValueRes.ok) setLiveInventoryValue(await inventoryValueRes.json());
         if (contributionRes.ok) setLiveContribution(await contributionRes.json());
         if (ladderRes.ok) setLiveLadder(await ladderRes.json());
@@ -497,7 +699,11 @@ export default function OverviewPage() {
     products: liveProducts,
   });
 
-  const metrics = pinned.map((m) => {
+  // Extracted from `pinned.map(...)` so the hero row runs through the SAME
+  // enrichment as the grid. The alternative — a second mapping for three
+  // metrics — is how "Available cash" on the hero and "Available cash" in a
+  // drawer end up disagreeing after someone edits one of them.
+  const enrich = (m) => {
     if (m.label === "Net revenue (MTD)" && liveRevenue) {
       const changeDirection = liveRevenue.changePct == null ? "flat" : liveRevenue.changePct >= 0 ? "up" : "down";
       const changeLabel =
@@ -1075,7 +1281,10 @@ export default function OverviewPage() {
           : [{ label: "Why blank", value: "A figure shown here with no source behind it is one a founder would act on" }]),
       ]),
     };
-  });
+  };
+
+  const metrics = pinned.map(enrich);
+  const heroMetrics = HERO_METRICS.map(enrich);
 
   return (
     <>
@@ -1090,7 +1299,10 @@ export default function OverviewPage() {
         actions={
           <>
             <button className="btn btn-secondary" type="button">Export</button>
-            <button className="btn btn-primary" type="button">Ask AI CFO</button>
+            {/* Was a button that rendered and did nothing — the same defect as
+                the decorative bell and the "AK" avatar. It now opens the ask
+                popup over this page, answered by the real orchestrator. */}
+            <AskCfoButton />
           </>
         }
       />
@@ -1115,7 +1327,29 @@ export default function OverviewPage() {
         ) : null}
 
         <div>
-          <h2 className="mb-3 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Key metrics</h2>
+          <h2 className="text-[19px] font-semibold tracking-[-0.02em] text-foreground">Today at a glance</h2>
+          <p className="mb-4 mt-0.5 text-[13px] text-muted-foreground">The three numbers that decide this week.</p>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {loadingLive
+              ? HERO_METRICS.map((m) => (
+                  <div key={m.label} className="gcard h-[212px] animate-pulse p-7" role="status" aria-busy="true">
+                    <span className="sr-only">Loading {m.label}</span>
+                  </div>
+                ))
+              : heroMetrics.map((m, i) => (
+                  <HeroMetric
+                    key={m.label}
+                    m={m}
+                    ink={i === 0}
+                    points={heroSeries[m.snapshotKey]}
+                    onEvidence={() => openDrawer(m.evidence, m.evidenceKey)}
+                  />
+                ))}
+          </div>
+        </div>
+
+        <div>
+          <h2 className="mb-3  mt-10 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Key metrics</h2>
           <div ref={gridRef} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {/* One skeleton per pinned card, so the grid keeps its exact shape
                 and nothing reflows when the values arrive. Rendered instead of
@@ -1161,7 +1395,7 @@ export default function OverviewPage() {
             deliberately ignores the date filter (a parcel's cash doesn't stop
             existing because it was ordered before the window). */}
         {liveRecon?.codPosition?.hasCourierData ? (
-          <div>
+          <div className="mt-10 mb-6">
             <h2 className="mb-3 flex items-center gap-2 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
               Where the COD cash is <span className="normal-case tracking-normal">· all-time, not period-filtered</span>
               <DataStatusBadge dataStatus={liveRecon.codDataStatus} />
@@ -1221,7 +1455,7 @@ export default function OverviewPage() {
 
         {picker && (
           <div
-            className="fixed inset-0 z-50 grid place-items-center bg-foreground/30 p-4"
+            className="fixed inset-0 z-50 grid place-items-center bg-scrim p-4"
             onClick={() => setPicker(false)}
           >
             <div
@@ -1261,7 +1495,7 @@ export default function OverviewPage() {
         )}
 
         {info && (
-          <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/30 p-4" onClick={() => setInfo(null)}>
+          <div className="fixed inset-0 z-50 grid place-items-center bg-scrim p-4" onClick={() => setInfo(null)}>
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-raised">
               <div className="flex items-start justify-between gap-2">
                 <div className="text-sm font-medium">{info.label}</div>
@@ -1315,7 +1549,7 @@ export default function OverviewPage() {
           />
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* §83 requires a deterministic forecast from confirmed and probable
               flows, each labelled CONFIRMED / HIGH_CONFIDENCE / MODELLED /
               USER_ASSUMPTION (§84). Extrapolating a line from 19 bank rows
@@ -1339,7 +1573,7 @@ export default function OverviewPage() {
           />
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* §40. Ranked by CM0 once costs exist; by revenue until then, with
               the heading saying which — a "most profitable" list built from
               revenue alone would put the highest-turnover loss-maker at the top.
@@ -1395,7 +1629,7 @@ export default function OverviewPage() {
           />
         </div>
 
-        <div className="mt-8 grid gap-4 lg:grid-cols-2">
+        <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div>
             <h2 className="mb-3 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Important anomalies</h2>
             <div className="grid gap-3">
@@ -1403,7 +1637,7 @@ export default function OverviewPage() {
                 <div className="gcard h-24 animate-pulse p-5" />
               ) : anomalies.length > 0 ? (
                 anomalies.map((a) => (
-                  <AlertCard key={a.title} severity={a.severity} title={a.title} description={a.description} meta={a.meta} actionLabel="View details" />
+                  <AlertCard key={a.id} severity={a.severity} title={a.title} description={a.description} meta={a.meta} actionLabel="View details" />
                 ))
               ) : (
                 <div className="gcard p-5 text-sm text-muted-foreground">
@@ -1420,7 +1654,7 @@ export default function OverviewPage() {
                 <div className="gcard h-24 animate-pulse p-5" />
               ) : actions.length > 0 ? (
                 actions.map((a) => (
-                  <Link key={a.title} href={a.href} className="block">
+                  <Link key={a.id} href={a.href} className="block">
                     <AlertCard severity="info" title={a.title} description={a.description} meta={a.meta} actionLabel="Go" />
                   </Link>
                 ))

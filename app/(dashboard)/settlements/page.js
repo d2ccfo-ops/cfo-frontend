@@ -405,50 +405,52 @@ function PayoutRow({ payout, open, detail, loading, onToggle }) {
 function PayoutLines({ detail }) {
   return (
     <div className="px-4 py-3">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Order</th>
-            <th>Provider reference</th>
-            <th>Type</th>
-            <th>Gross</th>
-            <th>Fee</th>
-            <th>Net</th>
-            <th>Covers</th>
-          </tr>
-        </thead>
-        <tbody>
-          {detail.lines.map((l) => {
-            // A ₹21 deposit against a ₹1,498 order is a correct line and a
-            // partial payment. Stating the share stops "settled" being read as
-            // "paid in full" — the single most misleading thing this table
-            // could do.
-            const share =
-              l.orderTotal && l.orderTotal !== "0"
-                ? (Number(l.grossAmount) / Number(l.orderTotal)) * 100
-                : null;
-            return (
-              <tr key={l.id}>
-                <td className="font-medium text-foreground">{l.orderNumber ?? "—"}</td>
-                <td className="font-mono text-[11.5px] text-muted-foreground">{l.awb ?? l.reference}</td>
-                <td className="text-[12.5px] text-muted-foreground">{LINE_TYPE_LABEL[l.type] ?? l.type}</td>
-                <td>{formatPaise(l.grossAmount)}</td>
-                <td className="text-[12.5px] text-muted-foreground">{formatPaise(l.feeAmount)}</td>
-                <td className="font-medium">{formatPaise(l.netAmount)}</td>
-                <td>
-                  {share === null ? (
-                    <span className="text-[12px] text-muted-foreground">—</span>
-                  ) : share >= 99.5 ? (
-                    <StatusBadge status="positive" label="Whole order" />
-                  ) : (
-                    <StatusBadge status="warning" label={`${share.toFixed(1)}% of order`} />
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <div className="overflow-x-auto">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Provider reference</th>
+              <th>Type</th>
+              <th>Gross</th>
+              <th>Fee</th>
+              <th>Net</th>
+              <th>Covers</th>
+            </tr>
+          </thead>
+          <tbody>
+            {detail.lines.map((l) => {
+              // A ₹21 deposit against a ₹1,498 order is a correct line and a
+              // partial payment. Stating the share stops "settled" being read as
+              // "paid in full" — the single most misleading thing this table
+              // could do.
+              const share =
+                l.orderTotal && l.orderTotal !== "0"
+                  ? (Number(l.grossAmount) / Number(l.orderTotal)) * 100
+                  : null;
+              return (
+                <tr key={l.id}>
+                  <td className="font-medium text-foreground">{l.orderNumber ?? "—"}</td>
+                  <td className="font-mono text-[11.5px] text-muted-foreground">{l.awb ?? l.reference}</td>
+                  <td className="text-[12.5px] text-muted-foreground">{LINE_TYPE_LABEL[l.type] ?? l.type}</td>
+                  <td>{formatPaise(l.grossAmount)}</td>
+                  <td className="text-[12.5px] text-muted-foreground">{formatPaise(l.feeAmount)}</td>
+                  <td className="font-medium">{formatPaise(l.netAmount)}</td>
+                  <td>
+                    {share === null ? (
+                      <span className="text-[12px] text-muted-foreground">—</span>
+                    ) : share >= 99.5 ? (
+                      <StatusBadge status="positive" label="Whole order" />
+                    ) : (
+                      <StatusBadge status="warning" label={`${share.toFixed(1)}% of order`} />
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       {detail.truncated ? (
         <p className="pt-2 text-[12px] text-muted-foreground">
           Showing the largest 500 lines of this payout.

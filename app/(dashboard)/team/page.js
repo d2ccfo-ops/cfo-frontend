@@ -142,78 +142,80 @@ export default function TeamPage() {
         ) : null}
 
         <div className="gcard p-5">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Member</th>
-                <th>Role</th>
-                <th>Joined</th>
-              </tr>
-            </thead>
-            {loading ? (
-              <TableSkeleton rows={3} columns={3} />
-            ) : (
-              <tbody>
-                {members.map((m) => (
-                  <tr key={m.id}>
-                    <td>
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary">
-                          {initialsFor(m.email)}
-                        </div>
-                        <div>
-                          <div className="text-[13.5px] font-medium text-foreground">
-                            {m.email}
-                            {m.isYou ? <span className="ml-1.5 text-[11px] text-muted-foreground">(you)</span> : null}
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Member</th>
+                  <th>Role</th>
+                  <th>Joined</th>
+                </tr>
+              </thead>
+              {loading ? (
+                <TableSkeleton rows={3} columns={3} />
+              ) : (
+                <tbody>
+                  {members.map((m) => (
+                    <tr key={m.id}>
+                      <td>
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary">
+                            {initialsFor(m.email)}
                           </div>
-                          {/* A row still carrying the legacy MEMBER shows what
-                              is in the database AND what it resolves to.
-                              Silently relabelling it would hide the fact from
-                              whoever is auditing permissions. */}
-                          {m.role === "MEMBER" ? (
-                            <div className="text-xs text-muted-foreground">
-                              stored as MEMBER, treated as {ROLE_LABEL[m.effectiveRole]}
+                          <div>
+                            <div className="text-[13.5px] font-medium text-foreground">
+                              {m.email}
+                              {m.isYou ? <span className="ml-1.5 text-[11px] text-muted-foreground">(you)</span> : null}
                             </div>
-                          ) : null}
+                            {/* A row still carrying the legacy MEMBER shows what
+                                is in the database AND what it resolves to.
+                                Silently relabelling it would hide the fact from
+                                whoever is auditing permissions. */}
+                            {m.role === "MEMBER" ? (
+                              <div className="text-xs text-muted-foreground">
+                                stored as MEMBER, treated as {ROLE_LABEL[m.effectiveRole]}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      {canManage && !m.isYou ? (
-                        <select
-                          className="input"
-                          style={{ maxWidth: 190 }}
-                          value={m.effectiveRole}
-                          disabled={saving === m.id}
-                          onChange={(e) => changeRole(m.id, e.target.value)}
-                        >
-                          {(data?.roles ?? []).map((r) => (
-                            <option key={r} value={r}>
-                              {ROLE_LABEL[r] ?? r}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-[13px] text-foreground">{ROLE_LABEL[m.effectiveRole] ?? m.effectiveRole}</span>
-                      )}
-                    </td>
-                    <td className="text-[12.5px] text-muted-foreground">
-                      {m.createdAt
-                        ? new Date(m.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
-                {members.length === 0 && !failed ? (
-                  <tr>
-                    <td colSpan={3} className="py-6 text-center text-muted-foreground">
-                      No members found for this organisation.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            )}
-          </table>
+                      </td>
+                      <td>
+                        {canManage && !m.isYou ? (
+                          <select
+                            className="input"
+                            style={{ maxWidth: 190 }}
+                            value={m.effectiveRole}
+                            disabled={saving === m.id}
+                            onChange={(e) => changeRole(m.id, e.target.value)}
+                          >
+                            {(data?.roles ?? []).map((r) => (
+                              <option key={r} value={r}>
+                                {ROLE_LABEL[r] ?? r}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-[13px] text-foreground">{ROLE_LABEL[m.effectiveRole] ?? m.effectiveRole}</span>
+                        )}
+                      </td>
+                      <td className="text-[12.5px] text-muted-foreground">
+                        {m.createdAt
+                          ? new Date(m.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {members.length === 0 && !failed ? (
+                    <tr>
+                      <td colSpan={3} className="py-6 text-center text-muted-foreground">
+                        No members found for this organisation.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              )}
+            </table>
+          </div>
 
           {!loading && !canManage ? (
             <p className="mt-4 text-[12.5px] text-muted-foreground">

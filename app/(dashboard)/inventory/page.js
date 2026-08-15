@@ -383,36 +383,38 @@ export default function InventoryPage() {
                 }`}
           </div>
 
-          <table className="table">
-            <thead>
-              <tr><th>Product</th><th>Units on hand</th><th>Units sold (30d)</th><th>Inventory value</th><th>Days of cover</th><th>Status</th></tr>
-            </thead>
-            {/* null means "not loaded yet" (as opposed to [] = loaded and
-                genuinely empty), which is the state that shows skeletons. */}
-            {liveProducts === null ? (
-              <TableSkeleton rows={8} columns={6} />
-            ) : (
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.name}</td><td>{r.units}</td><td>{r.sold30d}</td><td><AbbrCurrency value={r.valueRaw} /></td><td>{r.cover}</td>
-                    <td><StatusBadge status={r.tone} label={r.label} term={r.term} /></td>
-                  </tr>
-                ))}
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-6 text-center text-muted-foreground">
-                      {loadFailed
-                        ? "Couldn't load products. Check that the backend is running."
-                        : isFiltering
-                          ? "No products match these filters."
-                          : "No products yet — connect Shopify to sync your catalogue."}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            )}
-          </table>
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr><th>Product</th><th>Units on hand</th><th>Units sold (30d)</th><th>Inventory value</th><th>Days of cover</th><th>Status</th></tr>
+              </thead>
+              {/* null means "not loaded yet" (as opposed to [] = loaded and
+                  genuinely empty), which is the state that shows skeletons. */}
+              {liveProducts === null ? (
+                <TableSkeleton rows={8} columns={6} />
+              ) : (
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.name}</td><td>{r.units}</td><td>{r.sold30d}</td><td><AbbrCurrency value={r.valueRaw} /></td><td>{r.cover}</td>
+                      <td><StatusBadge status={r.tone} label={r.label} term={r.term} /></td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-muted-foreground">
+                        {loadFailed
+                          ? "Couldn't load products. Check that the backend is running."
+                          : isFiltering
+                            ? "No products match these filters."
+                            : "No products yet — connect Shopify to sync your catalogue."}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              )}
+            </table>
+          </div>
 
           {/* The observer watches this, not the last row: keeping it outside the
               table means the trigger survives the rows being replaced when a

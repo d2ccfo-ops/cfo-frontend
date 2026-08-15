@@ -18,7 +18,7 @@ const TONE = {
 export default function StatusBadge({ status = "neutral", label = "Status", term }) {
   const cls = TONE[status] || TONE.neutral;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${cls}`}>
+    <span className={`num inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${cls}`}>
       <Explain term={term} value={label}>
         {label}
       </Explain>

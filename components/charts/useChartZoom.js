@@ -64,16 +64,27 @@ export default function useChartZoom({ onZoom, onPan, enabled = true }) {
         onZoom?.(clampFactor(Math.exp(e.deltaY * PINCH_SENSITIVITY)), fractionOf(e.clientX));
         return;
       }
-      // Horizontal intent — a two-finger sideways swipe, or shift+wheel —
-      // pans. Requiring the horizontal delta to dominate keeps an ordinary
-      // diagonal scroll from nudging the window while the page moves.
-      const horizontal = e.shiftKey ? e.deltaY : e.deltaX;
+      // Pan on SHIFT+wheel only — deliberately not on a bare two-finger
+      // sideways swipe.
+      //
+      // On macOS Chrome that gesture is browser back/forward. This handler used
+      // to claim it, and the result was worse than either behaviour alone: the
+      // swipe started the browser's navigation animation, this preventDefault
+      // cancelled it partway, and the page neither panned cleanly nor went
+      // back — it hung mid-gesture and the back-swipe stopped working on any
+      // page carrying a chart.
+      //
+      // A gesture the browser has already assigned a navigation meaning is not
+      // ours to take. Panning keeps three affordances that cost nobody their
+      // back button: the arrow buttons, shift+wheel, and dragging the chart.
+      const horizontal = e.shiftKey ? e.deltaY : 0;
       const vertical = e.shiftKey ? e.deltaX : e.deltaY;
-      if (Math.abs(horizontal) > Math.abs(vertical) && Math.abs(horizontal) > 1) {
+      if (e.shiftKey && Math.abs(horizontal) > Math.abs(vertical) && Math.abs(horizontal) > 1) {
         e.preventDefault();
         onPan?.(horizontal > 0 ? 1 : -1);
       }
-      // Anything else: left alone, so the page scrolls.
+      // Anything else — including a bare horizontal swipe — is left alone, so
+      // the page scrolls and the browser keeps its navigation gesture.
     }
 
     // Touch pinch, for tablets. The span tracks the ratio between the fingers'

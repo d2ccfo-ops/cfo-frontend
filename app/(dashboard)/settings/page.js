@@ -67,7 +67,7 @@ export default function SettingsPage() {
               <h4 className="mb-4 text-lg font-medium text-foreground">Preferences</h4>
               <div className="field"><label>Theme</label></div>
               <ThemePicker />
-              <div className="mt-4 grid grid-cols-2 gap-3.5">
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className="field"><label>Currency</label><select className="input"><option>INR (₹)</option><option>USD ($)</option></select></div>
                 <div className="field"><label>Date format</label><select className="input"><option>DD/MM/YYYY</option><option>MM/DD/YYYY</option></select></div>
               </div>
@@ -278,7 +278,7 @@ function OrganisationTab() {
         <FieldError message={fieldErrors.name} />
       </div>
 
-      <div className="mt-3.5 grid grid-cols-2 gap-3.5">
+      <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
         <div className="field">
           <label>GSTIN</label>
           <input className="input" value={value.gstin} onChange={set("gstin")} maxLength={15} placeholder="29AACCA1234M1Z5" />
@@ -301,7 +301,7 @@ function OrganisationTab() {
         </select>
       </div>
 
-      <div className="mt-3.5 grid grid-cols-2 gap-3.5">
+      <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
         <div className="field">
           <label>Monthly revenue range</label>
           <select className="input" value={value.revenueRange} onChange={set("revenueRange")}>

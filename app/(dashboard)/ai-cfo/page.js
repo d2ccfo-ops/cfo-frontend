@@ -1,13 +1,20 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
-import { useCallback, useEffect, useRef, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TopNav from "@/components/layout/TopNav";
-import AIAnswerCard from "@/components/cards/AIAnswerCard";
-import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
 import NoDataPanel from "@/components/ui/NoDataPanel";
+import { AnswerTurn, MAX_QUESTION, ThinkingCard, useAskCfo } from "@/components/ai/askEngine";
+import { Icon, PLUS_PATHS, SPARKLES_PATHS } from "@/components/icons";
 
-// P4.4. The AI CFO workspace, wired to POST /ai/ask.
+// Local to this page rather than added to the shared icon set: these three are
+// used nowhere else, and the shared set is navigation vocabulary.
+const PANEL_PATHS = '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>';
+const SEND_PATHS = '<path d="M4 12h13M12 5.5 18.5 12 12 18.5"/>';
+const CLOSE_PATHS = '<path d="M6 6l12 12M18 6L6 18"/>';
+const SEARCH_PATHS = '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/>';
+
+// P4.4. The AI CFO workspace, wired to POST /ai/ask/stream.
 //
 // What this page replaced is worth stating, because the rule it broke is the
 // one this whole product rests on: it answered EVERY question with the same
@@ -29,288 +36,130 @@ import NoDataPanel from "@/components/ui/NoDataPanel";
 //   Unconfigured is stated, not simulated. With no ANTHROPIC_API_KEY the
 //   server says so and this page says so — it does not fall back to a
 //   template.
+//
+// THE STATE LIVES IN components/ai/askEngine.js, not here. It moved when the
+// overview screen got the ask popup: two surfaces asking the same questions
+// through two copies of the SSE reader is how they drift, and the copy that
+// drifts is the one nobody is looking at. This file is now the workspace
+// CHROME — conversations drawer, thread search, the wide answer column — over
+// the same provider the popup uses. Both therefore share one conversation, so
+// "Open full AI CFO" in the popup continues the thread rather than starting a
+// new one.
 
-const MAX_QUESTION = 1000;
-
-// Each candidate names the providers whose data it needs. A question is only
-// offered when at least one of them is an ACTIVE connection — `null` means the
-// question is answerable from data that is already in the system regardless of
-// what is connected now (reconciliation legs, anomalies, freshness itself).
-const CANDIDATE_QUESTIONS = [
-  { q: "How much net revenue did we make this month, and how does it compare with last month?", needs: ["SHOPIFY", "AMAZON", "FLIPKART"] },
-  { q: "What is our contribution margin right now, and which layer is eating it?", needs: ["SHOPIFY", "AMAZON", "FLIPKART"] },
-  { q: "Which products lose money on every order?", needs: ["SHOPIFY", "AMAZON", "FLIPKART"] },
-  { q: "How much cash do we have, and how long does it last at the current burn?", needs: ["BANK", "BANK_AA"] },
-  { q: "What did actually land in the bank this month versus what we billed?", needs: ["BANK", "BANK_AA"] },
-  { q: "How much money is Razorpay still holding that has not been paid out?", needs: ["RAZORPAY", "GOKWIK"] },
-  { q: "Where is my COD cash sitting right now?", needs: ["SHIPROCKET", "DELHIVERY", "BLUEDART", "CLICKPOST"] },
-  { q: "What is driving the RTO rate, and what is it costing us?", needs: ["SHIPROCKET", "DELHIVERY", "BLUEDART", "CLICKPOST"] },
-  { q: "Is ad spend still paying for itself?", needs: ["META_ADS", "GOOGLE_ADS"] },
-  { q: "How much did we refund this month, and through which gateway?", needs: ["SHOPIFY", "RAZORPAY", "GOKWIK"] },
-  { q: "What is anomalous about the business right now?", needs: null },
-  { q: "Which reconciliation legs cannot run, and what is missing?", needs: null },
-  { q: "Which of my data sources are stale, and what does that make unreliable?", needs: null },
-];
-
-function suggestionsFor(freshness) {
-  if (!freshness?.sources) return [];
-  const active = new Set(freshness.sources.filter((s) => s.status === "ACTIVE").map((s) => s.provider));
-  return CANDIDATE_QUESTIONS.filter((c) => c.needs === null || c.needs.some((p) => active.has(p))).map((c) => c.q);
-}
-
-function ThinkingCard() {
+function ThreadButton({ conversation, active, onClick }) {
   return (
-    <div className="gcard flex flex-col gap-3 p-5" role="status" aria-busy="true">
-      <span className="sr-only">Working out the answer</span>
-      <div className="h-3 w-24 animate-pulse rounded-sm bg-primary/10" />
-      <div className="h-4 w-4/5 animate-pulse rounded-sm bg-primary/10" />
-      <div className="h-4 w-3/5 animate-pulse rounded-sm bg-primary/10" />
-      <div className="mt-1 h-14 w-full animate-pulse rounded-md bg-primary/10" />
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full cursor-pointer rounded-xl px-3 py-2 text-left transition-colors ${
+        active ? "bg-primary-soft" : "hover:bg-muted"
+      }`}
+    >
+      <span className={`block truncate text-[13.5px] ${active ? "text-primary" : "text-foreground"}`}>
+        {conversation.title || "Untitled"}
+      </span>
+      <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
+        {conversation.messageCount} message{conversation.messageCount === 1 ? "" : "s"}
+      </span>
+    </button>
   );
 }
 
-function ToolTrail({ calls }) {
-  if (!calls?.length) return null;
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-      <span className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Tools run</span>
-      {calls.map((c, i) => (
-        <span
-          key={i}
-          className={`rounded-sm px-1.5 py-0.5 font-mono text-[10.5px] ${
-            c.ok ? "bg-muted text-muted-foreground" : "bg-destructive-soft text-destructive"
-          }`}
-          title={c.ok ? `${c.durationMs}ms` : "failed"}
-        >
-          {c.name ?? c.toolName}
-        </span>
-      ))}
-    </div>
-  );
-}
+// The tool trail moved INTO the answer card as the "How I got this" section,
+// matching the reference — same real toolCalls, one card that travels whole
+// in a screenshot.
 
 export default function AICfoPage() {
-  const { getToken } = useAuth();
-  const api = process.env.NEXT_PUBLIC_API_URL;
+  const {
+    activate,
+    status,
+    statusFailed,
+    configured,
+    freshness,
+    suggestions,
+    conversations,
+    activeId,
+    openConversation,
+    startNewConversation,
+    turns,
+    draft,
+    setDraft,
+    asking,
+    pendingQuestion,
+    askError,
+    progress,
+    threadLoading,
+    ask,
+    seriesBySource,
+    openEvidence,
+  } = useAskCfo();
 
-  const [status, setStatus] = useState(null); // { configured, note }
-  const [statusFailed, setStatusFailed] = useState(false);
-  const [freshness, setFreshness] = useState(null);
-  const [conversations, setConversations] = useState([]);
-  const [activeId, setActiveId] = useState(null);
-  const [turns, setTurns] = useState([]); // { question, result }
-  const [question, setQuestion] = useState("");
-  const [asking, setAsking] = useState(false);
-  const [askError, setAskError] = useState(null);
-  const [threadLoading, setThreadLoading] = useState(false);
-  const [evidence, setEvidence] = useState(null);
+  // The provider deliberately fetches nothing until asked, because it wraps
+  // every dashboard page. This page IS the reason to fetch.
+  useEffect(() => {
+    activate();
+  }, [activate]);
+
+  // Presentation-only state for this shell. The conversations list moved from
+  // an always-visible 240px rail into a slide-in drawer, which is what buys
+  // the answer column its centred measure.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [threadQuery, setThreadQuery] = useState("");
 
   const bottomRef = useRef(null);
-
-  const authed = useCallback(async () => ({ headers: { Authorization: `Bearer ${await getToken()}` } }), [getToken]);
-
-  const loadConversations = useCallback(async () => {
-    try {
-      const res = await fetch(`${api}/ai/conversations`, await authed());
-      if (!res.ok) return;
-      const body = await res.json();
-      setConversations(body.conversations ?? []);
-    } catch {
-      /* the list is navigation, not content — a failure here must not blank the page */
-    }
-  }, [api, authed]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const opts = await authed();
-        const [statusRes, freshRes] = await Promise.all([
-          fetch(`${api}/ai/status`, opts),
-          fetch(`${api}/metrics/freshness`, opts),
-        ]);
-        if (cancelled) return;
-        if (statusRes.ok) setStatus(await statusRes.json());
-        else setStatusFailed(true);
-        if (freshRes.ok) setFreshness(await freshRes.json());
-      } catch {
-        if (!cancelled) setStatusFailed(true);
-      }
-      // Inside the async body, not beside it: React 19's lint rejects a
-      // setState-triggering call made synchronously in an effect, and the
-      // list is navigation chrome that can arrive after the status does.
-      if (!cancelled) await loadConversations();
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [api, authed, loadConversations]);
-
-  // Rebuild a stored thread into the same {question, result} pairs a live ask
-  // produces, so one renderer serves both and a reloaded answer cannot look
-  // different from the one that was just given.
-  const openConversation = useCallback(
-    async (id) => {
-      setActiveId(id);
-      setTurns([]);
-      setAskError(null);
-      setThreadLoading(true);
-      try {
-        const res = await fetch(`${api}/ai/conversations/${id}`, await authed());
-        if (!res.ok) {
-          setAskError("That conversation could not be loaded.");
-          return;
-        }
-        const body = await res.json();
-        const rebuilt = [];
-        let pending = null;
-        for (const m of body.messages ?? []) {
-          if (m.role === "USER") pending = m.content;
-          else if (m.role === "ASSISTANT" && m.structured) {
-            rebuilt.push({
-              question: pending ?? "",
-              result: { answer: m.structured, status: "COMPLETED", toolCalls: [], toolEvidence: {}, verification: null },
-            });
-            pending = null;
-          }
-        }
-        // Attach the tool trail from the run that produced each answer.
-        const runs = body.runs ?? [];
-        rebuilt.forEach((t, i) => {
-          const run = runs[i];
-          if (!run) return;
-          t.result.toolCalls = run.toolCalls ?? [];
-          t.result.toolEvidence = run.toolEvidence ?? {};
-          // The unverified-figure marks travel with the stored answer, so a
-          // thread re-opened next month carries the same caveat it was given.
-          t.result.verification = run.verification ?? null;
-        });
-        setTurns(rebuilt);
-      } catch {
-        setAskError("That conversation could not be loaded.");
-      } finally {
-        setThreadLoading(false);
-      }
-    },
-    [api, authed]
-  );
-
-  const ask = useCallback(
-    async (text) => {
-      const q = text.trim();
-      if (q.length < 3 || asking) return;
-      setAsking(true);
-      setAskError(null);
-      setQuestion("");
-      try {
-        const res = await fetch(`${api}/ai/ask`, {
-          method: "POST",
-          headers: { ...(await authed()).headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ question: q, ...(activeId ? { conversationId: activeId } : {}) }),
-        });
-        const body = await res.json().catch(() => null);
-        if (!res.ok) {
-          setAskError(body?.message ?? `The question could not be answered (HTTP ${res.status}).`);
-          return;
-        }
-        setTurns((prev) => [...prev, { question: q, result: body }]);
-        if (body.conversationId && body.conversationId !== activeId) setActiveId(body.conversationId);
-        loadConversations();
-      } catch {
-        setAskError("Could not reach the server.");
-      } finally {
-        setAsking(false);
-      }
-    },
-    [api, authed, activeId, asking, loadConversations]
-  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns.length, asking]);
 
-  // Opening the workings for one figure. The §21 envelope is an API resource
-  // behind a bearer token, so it is fetched and shown here rather than linked.
-  const openEvidence = useCallback(
-    async (figure) => {
-      const ref = figure.evidenceRef ?? null;
-      if (!ref || !ref.startsWith("/evidence/")) {
-        // No envelope exists for this metric. Say which tool produced the
-        // figure rather than opening an empty drawer.
-        setEvidence({
-          title: figure.label || "Figure",
-          sourceLabel: `Produced by ${figure.source}`,
-          rows: [
-            { label: "Value", value: figure.value },
-            { label: "Tool", value: figure.source },
-            {
-              label: "Workings",
-              block: true,
-              value:
-                "This metric has no §21 evidence envelope yet — the five material metrics (revenue, contribution margin, product profitability, cash received, cash forecast) do. The figure still came from the tool named above, which reads the same calculation the dashboard shows.",
-            },
-          ],
-        });
-        return;
-      }
-      setEvidence({ title: figure.label || "Workings", sourceLabel: "Loading…", rows: [] });
-      try {
-        const res = await fetch(`${api}${ref}`, await authed());
-        if (!res.ok) {
-          setEvidence({ title: figure.label || "Workings", sourceLabel: "Unavailable", rows: [{ label: "Error", value: `HTTP ${res.status}`, block: true }] });
-          return;
-        }
-        const e = await res.json();
-        setEvidence({
-          title: figure.label || e.metric,
-          sourceLabel: `${e.formula ? "Formula " : ""}${e.formulaVersion ?? ""}`.trim(),
-          rows: [
-            ...(figure.value ? [{ label: "Figure in the answer", value: figure.value }] : []),
-            { label: "Definition", value: e.definition, block: true },
-            { label: "Formula", value: e.formula, block: true },
-            { label: "Period", value: `${e.period?.from?.slice(0, 10)} → ${e.period?.to?.slice(0, 10)}` },
-            { label: "Rows behind it", value: String(e.transactionCount ?? 0) },
-            { label: "Completeness", value: e.completeness ?? "—", block: true },
-            { label: "Reconciliation", value: e.reconciliationStatus?.status ?? "—" },
-            ...(e.reconciliationStatus?.reasons ?? []).map((r) => ({ label: "", value: r, block: true })),
-            ...(e.sources ?? []).map((s) => ({ label: s.label, value: s.detail })),
-            ...(e.warnings ?? []).map((w) => ({ label: "Warning", value: w, block: true })),
-          ],
-        });
-      } catch {
-        setEvidence({ title: figure.label || "Workings", sourceLabel: "Unavailable", rows: [{ label: "Error", value: "Could not reach the server.", block: true }] });
-      }
-    },
-    [api, authed]
-  );
+  const activeTitle = conversations.find((c) => c.id === activeId)?.title ?? null;
 
-  const suggestions = suggestionsFor(freshness);
-  const configured = status?.configured === true;
+  // Client-side filter over titles already loaded. Not a search endpoint —
+  // it narrows what is on screen and never implies results that were not
+  // fetched.
+  const visibleConversations = useMemo(() => {
+    const q = threadQuery.trim().toLowerCase();
+    return q ? conversations.filter((c) => (c.title || "").toLowerCase().includes(q)) : conversations;
+  }, [conversations, threadQuery]);
+
+  const startNew = useCallback(() => {
+    startNewConversation();
+    setDrawerOpen(false);
+  }, [startNewConversation]);
 
   return (
     <>
       <TopNav
         title="AI CFO"
         subtitle="Ask about your numbers — every figure names the tool that produced it"
-        actions={
-          turns.length > 0 || activeId ? (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                setActiveId(null);
-                setTurns([]);
-                setAskError(null);
-              }}
-            >
-              New conversation
-            </button>
-          ) : null
-        }
       />
 
-      <div className="grid gap-5" style={{ gridTemplateColumns: "minmax(0, 1fr) 240px" }}>
+      {/* Toolbar. The conversations rail became a drawer, so its entry point
+          lives here alongside the active thread's title. */}
+      <div className="mb-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-2 text-[13px] text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+        >
+          <Icon paths={PANEL_PATHS} size={15} />
+          Conversations
+          <span className="rounded-full bg-muted px-1.5 text-[11px]">{conversations.length}</span>
+        </button>
+        <button
+          type="button"
+          onClick={startNew}
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-2 text-[13px] text-primary transition-colors hover:bg-primary-soft"
+        >
+          <Icon paths={PLUS_PATHS} size={15} />
+          New
+        </button>
+        {activeTitle ? (
+          <span className="truncate text-[13px] text-muted-foreground">{activeTitle}</span>
+        ) : null}
+      </div>
+
+      <div className="mx-auto w-full ">
         <div className="flex min-w-0 flex-col gap-4">
           {statusFailed ? (
             <NoDataPanel
@@ -334,69 +183,60 @@ export default function AICfoPage() {
             />
           ) : null}
 
-          {threadLoading ? <ThinkingCard /> : null}
+          {threadLoading ? <ThinkingCard question={null} /> : null}
 
           {turns.map((t, i) => (
-            <div key={i} className="flex flex-col gap-2">
-              <AIAnswerCard
-                question={t.question}
-                answer={t.result.answer?.directAnswer ?? ""}
-                figures={(t.result.answer?.keyFigures ?? []).map((f) => ({
-                  ...f,
-                  // toolEvidence is what the tools in THIS run actually
-                  // returned, so a figure's source maps to a destination that
-                  // really exists. Picking the first ref out of the answer's
-                  // own evidence[] instead would attach revenue's workings to
-                  // a COD figure whenever an answer used more than one tool.
-                  evidenceRef: t.result.toolEvidence?.[f.source] ?? null,
-                }))}
-                drivers={t.result.answer?.drivers ?? []}
-                warnings={t.result.answer?.warnings ?? []}
-                evidence={t.result.answer?.evidence ?? []}
-                dataStatus={t.result.answer?.dataStatus ?? ""}
-                recommendedAction={t.result.answer?.recommendedAction ?? null}
-                unsupportedFigures={t.result.verification?.unsupportedFigures ?? []}
-                onEvidence={openEvidence}
-              />
-              <ToolTrail calls={t.result.toolCalls} />
-              {t.result.status === "EXHAUSTED" ? (
-                <div className="rounded-md bg-accent-soft px-3 py-2 text-[13px] text-accent">
-                  The question needed more steps than one run allows. What is above is what it had worked out — ask a
-                  narrower version to get the rest.
-                </div>
-              ) : null}
-              {t.result.status === "FAILED" ? (
-                <div className="rounded-md bg-destructive-soft px-3 py-2 text-[13px] text-destructive">
-                  That run failed{t.result.error ? `: ${t.result.error}` : "."} Nothing was answered — no figure above is
-                  a guess at what it would have said.
-                </div>
-              ) : null}
-            </div>
+            <AnswerTurn
+              key={i}
+              turn={t}
+              seriesBySource={seriesBySource}
+              onFollowUp={ask}
+              onEvidence={openEvidence}
+            />
           ))}
 
-          {asking ? <ThinkingCard /> : null}
+          {asking ? <ThinkingCard question={pendingQuestion} progress={progress} /> : null}
 
           {askError ? (
             <div className="rounded-md bg-destructive-soft px-3 py-2.5 text-[13px] text-destructive">{askError}</div>
           ) : null}
 
           {configured && turns.length === 0 && !asking && !threadLoading && suggestions.length > 0 ? (
-            <div className="gcard p-5">
-              <div className="mb-1 text-base font-medium text-foreground">Questions your data can answer</div>
-              <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">
-                Filtered by what is actually connected — a question about a source you have not connected is not
-                offered, because being asked it implies the answer exists.
+            /* The reference Welcome, with one honest difference: its starters
+               are a fixed list, these are filtered by what is actually
+               connected — a question about a source you have not connected is
+               not offered, because being asked it implies the answer exists. */
+            <div className="gcard rise px-6 py-10 text-center">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary-soft">
+                <Icon paths={SPARKLES_PATHS} size={20} className="text-primary" />
+              </div>
+              <h2 className="mt-4 text-[20px] font-medium tracking-[-0.01em] text-foreground">
+                Ask your books anything
+              </h2>
+              <p className="mx-auto mt-2 max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
+                Every answer opens with one plain-English verdict, then the figures behind it, what moved it, and the
+                caveats — so you never have to trust a number blindly. Only questions your connected sources can answer
+                are offered.
               </p>
-              <div className="flex flex-col gap-1.5">
-                {suggestions.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => ask(s)}
-                    className="cursor-pointer rounded-md border border-border bg-transparent px-3 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-muted"
-                  >
-                    {s}
-                  </button>
+              <div className="mt-7 grid gap-4 text-left sm:grid-cols-3">
+                {[...new Set(suggestions.map((s) => s.group))].map((group) => (
+                  <div key={group}>
+                    <div className="text-xs text-muted-foreground">{group}</div>
+                    <div className="mt-2 space-y-2">
+                      {suggestions
+                        .filter((s) => s.group === group)
+                        .map((s) => (
+                          <button
+                            key={s.q}
+                            type="button"
+                            onClick={() => ask(s.q)}
+                            className="w-full cursor-pointer rounded-lg border border-border bg-transparent px-3 py-2 text-left text-sm text-foreground transition-colors hover:border-primary hover:text-primary"
+                          >
+                            {s.q}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -413,58 +253,128 @@ export default function AICfoPage() {
 
           <div ref={bottomRef} />
 
-          <form
-            className="sticky bottom-0 flex gap-2 bg-background pb-1 pt-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              ask(question);
-            }}
-          >
-            <input
-              className="input flex-1"
-              placeholder={configured ? "Ask about revenue, margin, cash, COD, refunds…" : "Unavailable until the server is configured"}
-              value={question}
-              maxLength={MAX_QUESTION}
-              disabled={!configured || asking}
-              onChange={(e) => setQuestion(e.target.value)}
-            />
-            <button type="submit" className="btn btn-primary" disabled={!configured || asking || question.trim().length < 3}>
-              {asking ? "Working…" : "Ask"}
-            </button>
-          </form>
+          {/* The composer is its own raised card floating over the column,
+              rather than a bar welded to the viewport edge. */}
+          <div className="sticky bottom-4 z-10">
+            <form
+              className="gcard askglow p-2 shadow-raised"
+              onSubmit={(e) => {
+                e.preventDefault();
+                ask(draft);
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  className="h-11 min-w-0 flex-1 bg-transparent px-3 text-[15px] text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+                  placeholder={
+                    configured ? "Ask about revenue, margin, cash, COD, refunds…" : "Unavailable until the server is configured"
+                  }
+                  value={draft}
+                  maxLength={MAX_QUESTION}
+                  disabled={!configured || asking}
+                  onChange={(e) => setDraft(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  aria-label="Ask"
+                  className="inline-flex h-9 w-9 flex-none cursor-pointer items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!configured || asking || draft.trim().length < 3}
+                >
+                  <Icon paths={SEND_PATHS} size={16} />
+                </button>
+              </div>
+              {/* No suggestion chips under the composer. They repeated the
+                  welcome card's list verbatim while it was on screen, and
+                  once a thread is running the model's own "Ask next" chips —
+                  which follow from the answer just given — are the better
+                  prompt. */}
+            </form>
+          </div>
         </div>
-
-        <aside className="flex flex-col gap-2">
-          <div className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Conversations</div>
-          {conversations.length === 0 ? (
-            <div className="text-[12.5px] text-muted-foreground">Nothing asked yet.</div>
-          ) : (
-            conversations.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => openConversation(c.id)}
-                className={`cursor-pointer rounded-md border px-2.5 py-2 text-left text-[12.5px] transition-colors ${
-                  c.id === activeId ? "border-primary bg-primary-soft text-primary" : "border-border text-foreground hover:bg-muted"
-                }`}
-              >
-                <div className="line-clamp-2">{c.title || "Untitled"}</div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  {c.messageCount} message{c.messageCount === 1 ? "" : "s"}
-                </div>
-              </button>
-            ))
-          )}
-        </aside>
       </div>
 
-      <EvidenceDrawer
-        open={evidence !== null}
-        title={evidence?.title ?? "Evidence"}
-        sourceLabel={evidence?.sourceLabel ?? ""}
-        rows={evidence?.rows ?? []}
-        onClose={() => setEvidence(null)}
-      />
+      {/* Conversations drawer.
+          Radix Dialog, not a bare `fixed` aside — and the reason is specific.
+          DashboardChrome wraps every page in `div.rise`, whose animation ends
+          at `transform: translateY(0)` under `animation-fill-mode: both`. A
+          transform other than `none` makes that element the containing block
+          for `position: fixed` descendants, so a plain fixed drawer resolved
+          against the content column (which starts after the 264px sidebar and
+          inside its padding) instead of the viewport — it rendered clipped and
+          on top of the app's own nav. Dialog.Portal renders into document.body,
+          outside that wrapper, which is also why EvidenceDrawer never had the
+          problem. The focus trap, Escape-to-close and scroll lock come free. */}
+      <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-scrim" />
+          <Dialog.Content
+            aria-describedby={undefined}
+            className="fixed left-0 top-0 z-50 flex h-full w-[300px] max-w-[85vw] flex-col overflow-y-auto border-r border-border bg-card p-4 shadow-raised outline-none"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <Dialog.Title className="text-[13.5px] font-medium text-foreground">Conversations</Dialog.Title>
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  aria-label="Close conversations"
+                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  <Icon paths={CLOSE_PATHS} size={15} />
+                </button>
+              </Dialog.Close>
+            </div>
+
+            <button
+              type="button"
+              onClick={startNew}
+              className="mb-3 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-border px-3 py-2 text-[13px] text-primary transition-colors hover:bg-primary-soft"
+            >
+              <Icon paths={PLUS_PATHS} size={15} />
+              New conversation
+            </button>
+
+            {conversations.length > 0 ? (
+              <div className="relative mb-3">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                  <Icon paths={SEARCH_PATHS} size={14} />
+                </span>
+                <input
+                  value={threadQuery}
+                  onChange={(e) => setThreadQuery(e.target.value)}
+                  placeholder="Search conversations"
+                  className="h-9 w-full rounded-xl border border-border bg-card pl-9 pr-3 text-[13px] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+                />
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-1">
+              {conversations.length === 0 ? (
+                <p className="px-1 text-[12.5px] text-muted-foreground">Nothing asked yet.</p>
+              ) : visibleConversations.length === 0 ? (
+                <p className="px-1 text-[12.5px] text-muted-foreground">
+                  No conversation matches “{threadQuery}”.
+                </p>
+              ) : (
+                visibleConversations.map((c) => (
+                  <ThreadButton
+                    key={c.id}
+                    conversation={c}
+                    active={c.id === activeId}
+                    onClick={() => {
+                      openConversation(c.id);
+                      setDrawerOpen(false);
+                    }}
+                  />
+                ))
+              )}
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* The evidence drawer is rendered once by AskCfoProvider, so a figure
+          clicked here and the same figure clicked in the popup open the same
+          panel. It used to be mounted here. */}
     </>
   );
 }

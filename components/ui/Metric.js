@@ -28,7 +28,7 @@ export default function Metric({ label, value, change, tone = "neutral", sub, ba
 
   return (
     <>
-      <div className="gcard group relative p-4" {...menu.triggerProps} {...explainAttrs(label)}>
+      <div className="gcard group relative p-5" {...menu.triggerProps} {...explainAttrs(label)}>
         <button
           type="button"
           aria-label={`What is ${label}?`}
@@ -43,17 +43,17 @@ export default function Metric({ label, value, change, tone = "neutral", sub, ba
             change is a movement claim, this is a trust claim, and merging the
             two would let a green +12% wash out an amber ESTIMATED. */}
         <div className="flex items-start justify-between gap-2 pr-6">
-          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+          <div className="text-[13px] font-medium text-muted-foreground">{label}</div>
           {badge}
         </div>
-        <div className="mt-1 text-2xl font-normal text-foreground">{value}</div>
-        {change ? (
-          <div className="mt-2">
-            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${TONE[tone] || TONE.neutral}`}>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="num whitespace-nowrap text-[24px] font-semibold text-foreground">{value}</span>
+          {change ? (
+            <span className={`num inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${TONE[tone] || TONE.neutral}`}>
               {change}
             </span>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
         {sub ? <div className="mt-2 text-xs text-muted-foreground">{sub}</div> : null}
       </div>
 

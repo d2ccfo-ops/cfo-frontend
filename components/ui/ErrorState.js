@@ -6,13 +6,13 @@ export default function ErrorState({
   onRetry,
 }) {
   return (
-    <div className="flex flex-col items-center gap-1 px-5 py-8 text-center">
-      <div className="mb-1 flex items-center justify-center rounded-full bg-destructive-soft" style={{ width: 52, height: 52 }}>
-        <Icon paths={ERROR_TRIANGLE_PATHS} size={26} stroke="var(--color-destructive)" />
-      </div>
+    <div className="flex flex-col items-center gap-1 px-4 py-12 text-center">
+      <span className="mb-1 grid h-13 w-13 place-items-center rounded-full bg-destructive-soft p-3 text-destructive">
+        <Icon paths={ERROR_TRIANGLE_PATHS} size={24} />
+      </span>
       <div className="text-base font-medium text-foreground">{title}</div>
-      <p className="mt-1 max-w-[360px] text-[13.5px] text-muted-foreground">{description}</p>
-      <button className="btn btn-secondary mt-3.5" onClick={onRetry} type="button">
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
+      <button className="btn btn-secondary mt-4" onClick={onRetry} type="button">
         Retry
       </button>
     </div>

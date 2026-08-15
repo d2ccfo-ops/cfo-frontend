@@ -360,7 +360,7 @@ export default function RevenuePage() {
                 const width = Math.min(100, (Math.abs(step.value) / base) * 100);
                 return (
                   <div key={step.label} className="flex items-center gap-3">
-                    <div className="w-44 shrink-0 text-[13px] text-foreground">
+                    <div className="w-28 shrink-0 text-[13px] text-foreground sm:w-44">
                       {/* Every step of the waterfall is a rung of the ladder,
                           and each one explains what it is and what it takes
                           off. Steps with no recorded definition render as
@@ -377,7 +377,7 @@ export default function RevenuePage() {
                       />
                     </div>
                     <div
-                      className={`w-32 shrink-0 text-right text-[13px] tabular-nums ${
+                      className={`w-20 shrink-0 text-right text-[13px] tabular-nums sm:w-32 ${
                         isTotal || isStart ? "font-medium text-foreground" : "text-muted-foreground"
                       }`}
                     >
@@ -423,7 +423,7 @@ export default function RevenuePage() {
           ) : null}
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
           <RevenueTrendChart
             title={showCashSeries ? "Net revenue vs cash received" : "Net revenue"}
             subtitle="Trailing 6 months · not affected by the date filter"
@@ -449,43 +449,45 @@ export default function RevenuePage() {
           />
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
           <div className="gcard p-5">
             <div className="mb-2.5 text-base font-medium text-foreground">Revenue by channel</div>
-            <table className="table">
-              <thead>
-                <tr><th>Channel</th><th>Orders</th><th>GMV</th><th>Net revenue</th><th>Share</th></tr>
-              </thead>
-              {loading ? (
-                <TableSkeleton rows={3} columns={5} />
-              ) : (
-                <tbody>
-                  {(data?.byChannel ?? []).map((c) => (
-                    <tr key={c.channel}>
-                      <td className="capitalize">{c.channel}</td>
-                      <td>{c.orders.toLocaleString("en-IN")}</td>
-                      <td><AbbrCurrency value={c.gmv.value} /></td>
-                      <td><AbbrCurrency value={c.netRevenue.value} /></td>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-16 overflow-hidden rounded-[3px] bg-muted">
-                            <div className="h-full rounded-[3px] bg-primary" style={{ width: `${c.sharePct ?? 0}%` }} />
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr><th>Channel</th><th>Orders</th><th>GMV</th><th>Net revenue</th><th>Share</th></tr>
+                </thead>
+                {loading ? (
+                  <TableSkeleton rows={3} columns={5} />
+                ) : (
+                  <tbody>
+                    {(data?.byChannel ?? []).map((c) => (
+                      <tr key={c.channel}>
+                        <td className="capitalize">{c.channel}</td>
+                        <td>{c.orders.toLocaleString("en-IN")}</td>
+                        <td><AbbrCurrency value={c.gmv.value} /></td>
+                        <td><AbbrCurrency value={c.netRevenue.value} /></td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 w-16 overflow-hidden rounded-[3px] bg-muted">
+                              <div className="h-full rounded-[3px] bg-primary" style={{ width: `${c.sharePct ?? 0}%` }} />
+                            </div>
+                            <span className="text-[12.5px]">{pctLabel(c.sharePct)}</span>
                           </div>
-                          <span className="text-[12.5px]">{pctLabel(c.sharePct)}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {!loading && (data?.byChannel?.length ?? 0) === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-6 text-center text-muted-foreground">
-                        No orders in this period.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              )}
-            </table>
+                        </td>
+                      </tr>
+                    ))}
+                    {!loading && (data?.byChannel?.length ?? 0) === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                          No orders in this period.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                )}
+              </table>
+            </div>
           </div>
 
           {/* §68. Worth its own panel because COD and prepaid have completely

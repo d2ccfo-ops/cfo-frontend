@@ -176,139 +176,141 @@ export default function ReconciliationTable({
       ) : null}
 
       <div style={{ overflowX: "auto" }}>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Order</th>
-              <th>Channel</th>
-              <th>Mode</th>
-              <th>Placed</th>
-              <th><Explain term="col-expected">Expected</Explain></th>
-              <th><Explain term="col-received">Received</Explain></th>
-              <th>Difference</th>
-              <th>How it was matched</th>
-              <th>Status</th>
-              <th><Explain term="col-settled">Settled</Explain></th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const display = STATUS_DISPLAY[r.status] ?? STATUS_DISPLAY.unmatched;
-              const hasDifference = r.difference !== null && r.difference !== "0";
-              return (
-                <tr key={r.id}>
-                  <td className="font-medium text-foreground">{r.orderNumber}</td>
-                  <td>{r.channel}</td>
-                  <td className="text-[12.5px] text-muted-foreground">{r.paymentMode ?? "—"}</td>
-                  <td className="text-[12.5px] text-muted-foreground">
-                    {new Date(r.placedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}
-                  </td>
-                  <td>{formatPaise(r.expected)}</td>
-                  <td>{formatPaise(r.received)}</td>
-                  <td
-                    className="font-medium"
-                    style={{ color: hasDifference ? "var(--color-destructive)" : "var(--color-success)" }}
-                  >
-                    {r.difference === null ? "—" : formatPaise(r.difference)}
-                  </td>
-                  <td className="text-[12.5px] text-muted-foreground">
-                    {r.matchMethod}
-                    {/* The context that stops a staff-raised invoice reading as
-                        a lost payment: who it was billed to and when it falls
-                        due. The full trail (who raised it, the confirmation
-                        number, what was emailed) is in Evidence. */}
-                    {r.invoice ? (
-                      <div className="mt-1 text-[12px] leading-relaxed">
-                        <span className="text-foreground">
-                          {r.invoice.customerName || r.invoice.customerEmail || "Customer"}
-                        </span>
-                        {r.invoice.customerName && r.invoice.customerEmail ? ` · ${r.invoice.customerEmail}` : ""}
-                        <br />
-                        {r.invoice.dueDescription}
-                      </div>
-                    ) : null}
-                  </td>
-                  {/* The status is the output of a seven-branch classifier, not
-                      a field on the order — so it explains which branch it fell
-                      through and why. */}
-                  <td><StatusBadge status={display.tone} label={display.label} term={`status-${r.status.replaceAll("_", "-")}`} /></td>
-                  {/* The independent half of the story. Status says our two
-                      Shopify records agree; this says a third party actually
-                      transferred money, and names the transfer. */}
-                  <td><SettledCell settlement={r.settlement} statementCoverage={statementCoverage} placedAt={r.placedAt} /></td>
-                  <td>
-                    <div className="flex items-center gap-2.5">
-                      <button
-                        className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-primary"
-                        onClick={() => onEvidence?.(r)}
-                        type="button"
-                      >
-                        Evidence
-                      </button>
-                      {/* Only offered where it means something. Writing off a
-                          matched order, or one that is merely waiting on a
-                          courier, would record a decision nobody made. */}
-                      {/* P6.3. Offered alongside write-off and listed FIRST,
-                          because it is almost always the right action of the
-                          two: an unmatched order is far more often a payment
-                          the engine could not connect than money that will
-                          never arrive. Putting write-off first would make
-                          destroying the receivable the path of least
-                          resistance. */}
-                      {r.status === "unmatched" ? (
+        <div className="overflow-x-auto">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Channel</th>
+                <th>Mode</th>
+                <th>Placed</th>
+                <th><Explain term="col-expected">Expected</Explain></th>
+                <th><Explain term="col-received">Received</Explain></th>
+                <th>Difference</th>
+                <th>How it was matched</th>
+                <th>Status</th>
+                <th><Explain term="col-settled">Settled</Explain></th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const display = STATUS_DISPLAY[r.status] ?? STATUS_DISPLAY.unmatched;
+                const hasDifference = r.difference !== null && r.difference !== "0";
+                return (
+                  <tr key={r.id}>
+                    <td className="font-medium text-foreground">{r.orderNumber}</td>
+                    <td>{r.channel}</td>
+                    <td className="text-[12.5px] text-muted-foreground">{r.paymentMode ?? "—"}</td>
+                    <td className="text-[12.5px] text-muted-foreground">
+                      {new Date(r.placedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}
+                    </td>
+                    <td>{formatPaise(r.expected)}</td>
+                    <td>{formatPaise(r.received)}</td>
+                    <td
+                      className="font-medium"
+                      style={{ color: hasDifference ? "var(--color-destructive)" : "var(--color-success)" }}
+                    >
+                      {r.difference === null ? "—" : formatPaise(r.difference)}
+                    </td>
+                    <td className="text-[12.5px] text-muted-foreground">
+                      {r.matchMethod}
+                      {/* The context that stops a staff-raised invoice reading as
+                          a lost payment: who it was billed to and when it falls
+                          due. The full trail (who raised it, the confirmation
+                          number, what was emailed) is in Evidence. */}
+                      {r.invoice ? (
+                        <div className="mt-1 text-[12px] leading-relaxed">
+                          <span className="text-foreground">
+                            {r.invoice.customerName || r.invoice.customerEmail || "Customer"}
+                          </span>
+                          {r.invoice.customerName && r.invoice.customerEmail ? ` · ${r.invoice.customerEmail}` : ""}
+                          <br />
+                          {r.invoice.dueDescription}
+                        </div>
+                      ) : null}
+                    </td>
+                    {/* The status is the output of a seven-branch classifier, not
+                        a field on the order — so it explains which branch it fell
+                        through and why. */}
+                    <td><StatusBadge status={display.tone} label={display.label} term={`status-${r.status.replaceAll("_", "-")}`} /></td>
+                    {/* The independent half of the story. Status says our two
+                        Shopify records agree; this says a third party actually
+                        transferred money, and names the transfer. */}
+                    <td><SettledCell settlement={r.settlement} statementCoverage={statementCoverage} placedAt={r.placedAt} /></td>
+                    <td>
+                      <div className="flex items-center gap-2.5">
                         <button
                           className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-primary"
-                          onClick={() => onPair?.(r)}
+                          onClick={() => onEvidence?.(r)}
                           type="button"
                         >
-                          Pair payment
+                          Evidence
                         </button>
-                      ) : null}
-                      {r.status === "unmatched" ? (
-                        <button
-                          className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-muted-foreground"
-                          onClick={() => onWriteOff?.(r)}
-                          type="button"
-                          disabled={writingOffId === r.id}
-                        >
-                          {writingOffId === r.id ? "Saving…" : "Write off"}
-                        </button>
-                      ) : null}
-                      {/* A manual pairing is a decision, so it has to be
-                          reversible by the same route it was made. Shown only
-                          where one exists — MANUAL confidence with a payment
-                          behind it, which a write-off (null target) is not. */}
-                      {r.confidence === "MANUAL" && r.status !== "written_off" ? (
-                        <button
-                          className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-muted-foreground"
-                          onClick={() => onUnpair?.(r)}
-                          type="button"
-                          disabled={unpairingId === r.id}
-                        >
-                          {unpairingId === r.id ? "Undoing…" : "Unpair"}
-                        </button>
-                      ) : null}
-                      {/* A decision must be reversible. Undo deletes the
-                          write-off and re-derives the row from the evidence —
-                          it does NOT guess what the status "was before". */}
-                      {r.status === "written_off" ? (
-                        <button
-                          className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-muted-foreground"
-                          onClick={() => onRestore?.(r)}
-                          type="button"
-                          disabled={restoringId === r.id}
-                        >
-                          {restoringId === r.id ? "Restoring…" : "Undo write-off"}
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                        {/* Only offered where it means something. Writing off a
+                            matched order, or one that is merely waiting on a
+                            courier, would record a decision nobody made. */}
+                        {/* P6.3. Offered alongside write-off and listed FIRST,
+                            because it is almost always the right action of the
+                            two: an unmatched order is far more often a payment
+                            the engine could not connect than money that will
+                            never arrive. Putting write-off first would make
+                            destroying the receivable the path of least
+                            resistance. */}
+                        {r.status === "unmatched" ? (
+                          <button
+                            className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-primary"
+                            onClick={() => onPair?.(r)}
+                            type="button"
+                          >
+                            Pair payment
+                          </button>
+                        ) : null}
+                        {r.status === "unmatched" ? (
+                          <button
+                            className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-muted-foreground"
+                            onClick={() => onWriteOff?.(r)}
+                            type="button"
+                            disabled={writingOffId === r.id}
+                          >
+                            {writingOffId === r.id ? "Saving…" : "Write off"}
+                          </button>
+                        ) : null}
+                        {/* A manual pairing is a decision, so it has to be
+                            reversible by the same route it was made. Shown only
+                            where one exists — MANUAL confidence with a payment
+                            behind it, which a write-off (null target) is not. */}
+                        {r.confidence === "MANUAL" && r.status !== "written_off" ? (
+                          <button
+                            className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-muted-foreground"
+                            onClick={() => onUnpair?.(r)}
+                            type="button"
+                            disabled={unpairingId === r.id}
+                          >
+                            {unpairingId === r.id ? "Undoing…" : "Unpair"}
+                          </button>
+                        ) : null}
+                        {/* A decision must be reversible. Undo deletes the
+                            write-off and re-derives the row from the evidence —
+                            it does NOT guess what the status "was before". */}
+                        {r.status === "written_off" ? (
+                          <button
+                            className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-muted-foreground"
+                            onClick={() => onRestore?.(r)}
+                            type="button"
+                            disabled={restoringId === r.id}
+                          >
+                            {restoringId === r.id ? "Restoring…" : "Undo write-off"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {!loading && rows.length === 0 ? (

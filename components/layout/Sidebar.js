@@ -18,15 +18,21 @@ const clerkFooterAppearance = {
   },
 };
 
+// Hover is bg-muted, not the design's hover:bg-sidebar-accent. In light mode
+// --sidebar-accent is byte-identical to --card, and this row now sits INSIDE a
+// gcard, so hover:bg-sidebar-accent would tint card-on-card and read as dead.
+// Active keeps the token but leans on shadow-card + font-semibold to carry it:
+// a same-colour chip lifted off the panel, which is what actually reads once
+// the fill is a no-op.
 function NavRow({ item, active, collapsed }) {
   return (
     <Link
       href={item.href}
-      className={`group flex h-10 items-center gap-3 rounded-r-full text-sm transition-colors ${
-        collapsed ? "pl-4 pr-2" : "pl-6 pr-4"
+      className={`group flex h-11 items-center gap-3 rounded-xl text-sm transition-colors ${
+        collapsed ? "mx-2 justify-center px-0" : "mx-3 px-3"
       } ${
         active
-          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground hover:bg-sidebar-accent"
+          ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground shadow-card hover:bg-sidebar-accent"
           : "text-sidebar-foreground hover:bg-muted"
       }`}
     >
@@ -39,59 +45,56 @@ function NavRow({ item, active, collapsed }) {
 export default function Sidebar({ collapsed = false }) {
   const pathname = usePathname();
 
+  // --sidebar now EQUALS --background, so this rail is the canvas, not a panel.
+  // The old border-r + bg-sidebar would render as an unstyled column; the nav
+  // has to float in a gcard instead. Outer <aside> owns the sticky/width/scroll,
+  // the inner div is the card.
   return (
-    <nav
-      className={`sticky top-16 hidden h-[calc(100vh-4rem)] flex-none flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar py-3 transition-[width] md:flex ${
-        collapsed ? "w-[72px]" : "w-[264px]"
+    <aside
+      className={`sticky top-[68px] hidden h-[calc(100vh-84px)] flex-none overflow-y-auto transition-[width] duration-300 md:block ${
+        collapsed ? "w-[88px]" : "w-[272px]"
       }`}
     >
-      <div className="flex flex-col gap-0.5 pr-3">
-        {NAV_ORDER.map((item) => (
-          <NavRow key={item.key} item={item} active={pathname === item.href} collapsed={collapsed} />
-        ))}
-      </div>
+      <div className="gcard ml-4 mt-4 flex min-h-[calc(100vh-108px)] flex-col py-4">
+        <nav className="flex flex-col gap-1">
+          {NAV_ORDER.map((item) => (
+            <NavRow key={item.key} item={item} active={pathname === item.href} collapsed={collapsed} />
+          ))}
+        </nav>
 
-      <div className="my-3 border-t border-sidebar-border" />
+        <div className={`my-4 border-t border-border/50 ${collapsed ? "mx-4" : "mx-5"}`} />
 
-      <div className="flex flex-col gap-0.5 pr-3">
-        {NAV_ORDER_2.map((item) => (
-          <NavRow key={item.key} item={item} active={pathname === item.href} collapsed={collapsed} />
-        ))}
-      </div>
+        <nav className="flex flex-col gap-1">
+          {NAV_ORDER_2.map((item) => (
+            <NavRow key={item.key} item={item} active={pathname === item.href} collapsed={collapsed} />
+          ))}
+        </nav>
 
-      {!collapsed && (
-        <div className="mx-4 mt-6 rounded-lg bg-accent-soft p-3">
-          <div className="text-sm font-medium text-foreground">Spark plan</div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            3 of 6 sources connected. Connect banking for full reconciliation.
-          </p>
-        </div>
-      )}
+        <div className="flex-1" />
 
-      <div className="flex-1" />
-
-      <div className={collapsed ? "px-2" : "px-4"}>
-        <div className="flex items-center gap-2.5 border-t border-sidebar-border pt-3">
-          <UserButton appearance={clerkFooterAppearance} afterSignOutUrl="/login" />
+        <div className={collapsed ? "px-3" : "px-5"}>
+          <div className="flex items-center gap-2.5 border-t border-border/50 pt-3">
+            <UserButton appearance={clerkFooterAppearance} afterSignOutUrl="/login" />
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <OrganizationSwitcher
+                  appearance={clerkFooterAppearance}
+                  hidePersonal
+                  afterSelectOrganizationUrl="/"
+                  afterCreateOrganizationUrl="/onboarding"
+                />
+              </div>
+            )}
+          </div>
           {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <OrganizationSwitcher
-                appearance={clerkFooterAppearance}
-                hidePersonal
-                afterSelectOrganizationUrl="/"
-                afterCreateOrganizationUrl="/onboarding"
-              />
-            </div>
+            <SignOutButton redirectUrl="/login">
+              <button type="button" className="btn btn-ghost btn-block mt-2.5 text-xs">
+                Sign out
+              </button>
+            </SignOutButton>
           )}
         </div>
-        {!collapsed && (
-          <SignOutButton redirectUrl="/login">
-            <button type="button" className="btn btn-ghost btn-block mt-2.5 text-xs">
-              Sign out
-            </button>
-          </SignOutButton>
-        )}
       </div>
-    </nav>
+    </aside>
   );
 }

@@ -3,6 +3,7 @@
 import { SignOutButton, UserButton, useAuth, useOrganizationList } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { Logo } from "@/components/ui/Logo";
 
 // Clerk owns the "workspace" (org name + membership). The remaining fields
 // below (GSTIN, PAN, category, revenue range, channel) describe the LEGAL
@@ -150,16 +151,20 @@ export default function OnboardingPage() {
   const selectsReady = options !== null;
 
   return (
-    <div className="flex flex-col items-center bg-background" style={{ minHeight: "100vh" }}>
-      <div className="w-full" style={{ maxWidth: 600, padding: "48px 24px" }}>
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto w-full max-w-[600px] px-6 py-12">
         <div className="mb-9 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-sm font-semibold text-background">C</div>
-            <span className="text-[17px] font-medium text-foreground">CFOOS</span>
+          <div className="flex items-center text-foreground">
+            <Logo height={22} />
           </div>
           <div className="flex items-center gap-3">
             <SignOutButton redirectUrl="/login">
-              <button type="button" className="btn btn-ghost" style={{ fontSize: "12.5px" }}>
+              {/* No font-size override. This carried an inline 12.5px, which
+                  only won because inline beats a class; a Tailwind text-*
+                  utility would not, since .btn is unlayered and Tailwind's
+                  utilities are in @layer utilities. The design's own text
+                  Button is text-sm, which is exactly .btn's 14px. */}
+              <button type="button" className="btn btn-ghost">
                 Sign out
               </button>
             </SignOutButton>
@@ -169,12 +174,12 @@ export default function OnboardingPage() {
 
         <div className="mb-8 flex items-center gap-2">
           {[1, 2, 3].map((n) => (
-            <div key={n} className="flex-1 rounded-full" style={{ height: 4, background: n <= 2 ? "var(--color-primary)" : "var(--color-muted)" }} />
+            <div key={n} className={`h-1 flex-1 rounded-full ${n <= 2 ? "bg-primary" : "bg-muted"}`} />
           ))}
         </div>
 
-        <h2 className="mb-1 text-xl font-normal text-foreground">Tell us about your business</h2>
-        <p className="mb-7 text-[13.5px] text-muted-foreground">This helps CFOOS calibrate benchmarks for your category.</p>
+        <h2 className="mb-1 text-2xl font-normal text-foreground">Tell us about your business</h2>
+        <p className="mb-7 text-sm text-muted-foreground">This helps CFOOS calibrate benchmarks for your category.</p>
 
         <div className="field">
           <label>Legal entity name</label>
@@ -187,7 +192,7 @@ export default function OnboardingPage() {
           <FieldError message={fieldErrors.name} />
         </div>
 
-        <div className="grid gap-3.5 sm:grid-cols-2 mt-3.5">
+        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
           <div className="field">
             <label>GSTIN</label>
             <input className="input" placeholder="29AACCA1234M1Z5" value={form.gstin} onChange={set("gstin")} maxLength={15} />
@@ -209,7 +214,7 @@ export default function OnboardingPage() {
           </select>
         </div>
 
-        <div className="grid gap-3.5 sm:grid-cols-2 mt-3.5">
+        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
           <div className="field">
             <label>Monthly revenue range</label>
             <select className="input" value={form.revenueRange} onChange={set("revenueRange")} disabled={!selectsReady}>
@@ -228,9 +233,9 @@ export default function OnboardingPage() {
           </div>
         </div>
 
-        {error ? <p className="mt-4 text-[13px]" style={{ color: "var(--color-destructive)" }}>{error}</p> : null}
+        {error ? <p className="mt-4 text-[13px] text-destructive">{error}</p> : null}
 
-        <div className="flex justify-between mt-8">
+        <div className="mt-8 flex justify-between">
           <button className="btn btn-ghost" type="button">Back</button>
           <button
             className="btn btn-primary"
@@ -249,8 +254,6 @@ export default function OnboardingPage() {
 function FieldError({ message }) {
   if (!message) return null;
   return (
-    <p className="mt-1 text-[12px]" style={{ color: "var(--color-destructive)" }}>
-      {message}
-    </p>
+    <p className="mt-1 text-[12px] text-destructive">{message}</p>
   );
 }

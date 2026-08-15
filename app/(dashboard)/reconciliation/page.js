@@ -510,7 +510,12 @@ export default function ReconciliationPage() {
 
         {/* Five columns only when there are invoiced orders to report — a
             store that never raises invoices keeps the original four. */}
-        <div className={`grid gap-4 sm:grid-cols-2 ${hasInvoiced ? "lg:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-4"}`}>
+        {/* Four across at most, whether or not the invoiced tile is present.
+            Five columns squeezed each tile under ~200px, which wrapped
+            "COD collected by courier" onto four lines and pushed the figure —
+            the only thing on the tile anyone reads at a glance — below the
+            fold of the card. A fifth tile wraps onto a second row instead. */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <Metric
             label="Auto-matched"
             value={auto ? formatPct(auto.pctByCount) : "—"}

@@ -65,7 +65,7 @@ export default function DateRangePicker() {
                   value={custom.from}
                   max={custom.to || undefined}
                   onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))}
-                  className="w-[130px] rounded-md border border-border bg-card px-2 py-1.5 text-[13px] text-foreground"
+                  className="w-full min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1.5 text-[13px] text-foreground"
                 />
                 <span className="text-[13px] text-muted-foreground">to</span>
                 <input
@@ -74,7 +74,7 @@ export default function DateRangePicker() {
                   value={custom.to}
                   min={custom.from || undefined}
                   onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))}
-                  className="w-[130px] rounded-md border border-border bg-card px-2 py-1.5 text-[13px] text-foreground"
+                  className="w-full min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1.5 text-[13px] text-foreground"
                 />
               </div>
               {/* Says which period is actually in effect. Without this the
