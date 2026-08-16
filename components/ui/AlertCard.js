@@ -25,12 +25,22 @@ export default function AlertCard({
   const actionClass =
     "alert-card__action inline-flex h-8 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium text-primary transition-colors";
 
+  // min-w-0 on the CARD, not just on the column inside it. The inner column
+  // already had it, which is why this looked handled — but the card is itself
+  // an item of the grid on the overview, so it kept min-width: auto and sized
+  // to its own min-content instead of its track. Measured at 320px: 299px of
+  // card in a 272px parent, which pushed the whole document sideways. The
+  // offending content is an anomaly title carrying an unbreakable connection
+  // id, "GOKWIK (19slhb8ckcwi)".
   return (
-    <div className="gcard flex gap-3 p-5">
+    <div className="gcard flex min-w-0 gap-3 p-5">
       <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${s.dot}`} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">
-          <div className="text-[15px] font-medium text-foreground">{title}</div>
+          {/* Wraps rather than widening the card. `break-words` is what lets
+              that connection id break mid-token — without it the title has a
+              min-content width no amount of min-w-0 can get under. */}
+          <div className="min-w-0 break-words text-[15px] font-medium text-foreground">{title}</div>
           <StatusBadge status={s.tone} label={s.label} />
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>

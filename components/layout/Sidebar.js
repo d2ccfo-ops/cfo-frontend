@@ -24,10 +24,11 @@ const clerkFooterAppearance = {
 // Active keeps the token but leans on shadow-card + font-semibold to carry it:
 // a same-colour chip lifted off the panel, which is what actually reads once
 // the fill is a no-op.
-function NavRow({ item, active, collapsed }) {
+function NavRow({ item, active, collapsed, onNavigate }) {
   return (
     <Link
       href={item.href}
+      onClick={onNavigate}
       className={`group flex h-11 items-center gap-3 rounded-xl text-sm transition-colors ${
         collapsed ? "mx-2 justify-center px-0" : "mx-3 px-3"
       } ${
@@ -42,23 +43,51 @@ function NavRow({ item, active, collapsed }) {
   );
 }
 
-export default function Sidebar({ collapsed = false }) {
+// TWO LAYOUTS, ONE COMPONENT, AND THE REASON THEY CANNOT BE ONE.
+//
+// This used to be `hidden md:block`, which meant the rail simply did not exist
+// below 768px — and the header's menu button toggled `collapsed`, a width, on
+// an element that was not rendered. Tapping it did nothing at all, and there
+// was no other way to reach any page on a phone.
+//
+// At md and up the rail is in flow and `collapsed` changes its width between
+// 88px and 272px, as before. Below md it leaves the flow entirely and becomes a
+// drawer over the content, driven by `mobileOpen` — a different question from
+// `collapsed`, which is why they are separate props rather than one boolean:
+// the desktop default is OPEN (expanded) and the mobile default is CLOSED, so a
+// single flag would have to mean opposite things at different widths.
+//
+// It translates rather than mounting on open so the transition has something to
+// animate from, and so the nav is present in the DOM for assistive tech at all
+// widths. `md:translate-x-0` unsets the off-screen transform unconditionally at
+// desktop — without it, a drawer closed on a phone would stay shifted off-screen
+// after a rotate to landscape.
+export default function Sidebar({ collapsed = false, mobileOpen = false, onNavigate }) {
   const pathname = usePathname();
 
-  // --sidebar now EQUALS --background, so this rail is the canvas, not a panel.
-  // The old border-r + bg-sidebar would render as an unstyled column; the nav
-  // has to float in a gcard instead. Outer <aside> owns the sticky/width/scroll,
-  // the inner div is the card.
   return (
     <aside
-      className={`sticky top-[68px] hidden h-[calc(100vh-84px)] flex-none overflow-y-auto transition-[width] duration-300 md:block ${
-        collapsed ? "w-[88px]" : "w-[272px]"
-      }`}
+      // aria-hidden only below md, and only when closed: at desktop widths the
+      // same element is the permanent rail and must never be hidden from a
+      // screen reader.
+      aria-hidden={mobileOpen ? undefined : "true"}
+      className={`fixed inset-y-0 left-0 z-50 w-[272px] flex-none overflow-y-auto bg-background transition-transform duration-300 md:sticky md:top-[68px] md:z-auto md:h-[calc(100vh-84px)] md:translate-x-0 md:bg-transparent md:transition-[width] ${
+        mobileOpen ? "translate-x-0" : "-translate-x-full"
+      } ${collapsed ? "md:w-[88px]" : "md:w-[272px]"}`}
     >
-      <div className="gcard ml-4 mt-4 flex min-h-[calc(100vh-108px)] flex-col py-4">
+      {/* --sidebar now EQUALS --background, so this rail is the canvas, not a
+          panel. The old border-r + bg-sidebar would render as an unstyled
+          column; the nav has to float in a gcard instead. */}
+      <div className="gcard m-3 flex min-h-[calc(100vh-24px)] flex-col py-4 md:ml-4 md:mr-0 md:mt-4 md:min-h-[calc(100vh-108px)]">
         <nav className="flex flex-col gap-1">
           {NAV_ORDER.map((item) => (
-            <NavRow key={item.key} item={item} active={pathname === item.href} collapsed={collapsed} />
+            <NavRow
+              key={item.key}
+              item={item}
+              active={pathname === item.href}
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
           ))}
         </nav>
 
@@ -66,7 +95,13 @@ export default function Sidebar({ collapsed = false }) {
 
         <nav className="flex flex-col gap-1">
           {NAV_ORDER_2.map((item) => (
-            <NavRow key={item.key} item={item} active={pathname === item.href} collapsed={collapsed} />
+            <NavRow
+              key={item.key}
+              item={item}
+              active={pathname === item.href}
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
           ))}
         </nav>
 

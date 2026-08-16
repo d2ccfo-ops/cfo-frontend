@@ -1,7 +1,7 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
@@ -42,11 +42,57 @@ function ExplainModeButton() {
 }
 
 export default function DashboardChrome({ children }) {
+  // Two states, because the menu button means different things at different
+  // widths: at md+ it narrows the permanent rail, below md it opens a drawer
+  // that is closed by default. One boolean would have to be true and false at
+  // the same time to express "expanded on desktop, shut on mobile".
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   // Only feeds the `key` on the content wrapper so the `rise` entry animation
   // replays per route. The design uses TanStack's useRouterState; the App
   // Router equivalent is usePathname.
   const pathname = usePathname();
+
+  // matchMedia rather than a resize listener: this only has to be right at the
+  // moment of the click, and reading it there costs nothing and cannot go stale.
+  // 768px is Tailwind's `md`, which is the breakpoint Sidebar switches on — the
+  // two must agree or the button toggles the state the layout is not using.
+  const toggleNav = useCallback(() => {
+    if (window.matchMedia("(min-width: 768px)").matches) setCollapsed((c) => !c);
+    else setMobileOpen((o) => !o);
+  }, []);
+
+  // A drawer left open across a navigation covers the page you just asked for.
+  // Adjusted during render rather than in an effect — React's documented way to
+  // reset state when a value changes, and the only one that closes the drawer in
+  // the SAME pass as the new route paints. An effect would render the new page
+  // once with the drawer still over it, then close it, which is a visible flash.
+  //
+  // Clicking a nav row also closes it directly (onNavigate). This exists for the
+  // navigations that do not go through one: the back button, and links inside
+  // page content.
+  const [lastPath, setLastPath] = useState(pathname);
+  if (pathname !== lastPath) {
+    setLastPath(pathname);
+    setMobileOpen(false);
+  }
+
+  // Escape closes it, and the body cannot scroll behind it — without the second
+  // part, dragging on the backdrop scrolls the page underneath, which reads as
+  // the drawer being broken.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [mobileOpen]);
 
   return (
     <ExplainModeProvider>
@@ -64,8 +110,9 @@ export default function DashboardChrome({ children }) {
       <header className="sticky top-0 z-30 flex h-[68px] items-center gap-3 border-b border-border/50 bg-background/85 px-4 backdrop-blur">
         <button
           type="button"
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={toggleNav}
           aria-label="Toggle navigation"
+          aria-expanded={mobileOpen}
           className="grid h-10 w-10 flex-none place-items-center rounded-xl text-muted-foreground hover:bg-muted"
         >
           <Icon paths={MENU_PATHS} size={20} strokeWidth={1.8} />
@@ -107,8 +154,22 @@ export default function DashboardChrome({ children }) {
         </div>
       </header>
 
+      {/* Below md only. A plain div would leave the drawer dismissable by
+          nothing but the menu button; making it a button gives it a click
+          target, a keyboard focus stop and a name, which is what a screen
+          reader needs to say "close navigation" rather than describing a
+          rectangle. Sits under the drawer's z-50 and above the header's z-30. */}
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-foreground/25 md:hidden"
+        />
+      )}
+
       <div className="flex">
-        <Sidebar collapsed={collapsed} />
+        <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onNavigate={() => setMobileOpen(false)} />
         <main className="min-w-0 flex-1">
           <div key={pathname} className="rise mx-auto max-w-[1320px] px-6 py-8 md:pr-8">
             {children}

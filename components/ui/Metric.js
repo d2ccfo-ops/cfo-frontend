@@ -21,7 +21,17 @@ const TONE = {
 //
 // The hover "i" exists because a right-click menu nobody knows about is the
 // same as no menu. It is the affordance; the right-click is the shortcut.
-export default function Metric({ label, value, change, tone = "neutral", sub, badge = null }) {
+// `onClick` makes the whole card a control, and it exists so call sites do not
+// have to wrap this component in a <button> to achieve that. Inventory did
+// exactly that, which nested a button inside the "i" button below — invalid
+// HTML that browsers resolve by closing the outer button early, so React's tree
+// and the parsed DOM disagreed and the page hydrated with an error.
+//
+// The click target is an overlay sibling rather than a wrapper: an absolutely
+// positioned button covering the card, sitting above the content but below the
+// "i", so both controls stay reachable by mouse and keyboard and neither
+// contains the other.
+export default function Metric({ label, value, change, tone = "neutral", sub, badge = null, onClick = null, actionLabel = null }) {
   const menu = useContextMenu();
   const [info, setInfo] = useState(false);
   const documented = hasMetricDefinition(label);
@@ -29,12 +39,21 @@ export default function Metric({ label, value, change, tone = "neutral", sub, ba
   return (
     <>
       <div className="gcard group relative p-5" {...menu.triggerProps} {...explainAttrs(label)}>
+        {onClick ? (
+          <button
+            type="button"
+            onClick={onClick}
+            aria-label={actionLabel ?? label}
+            title={actionLabel ?? undefined}
+            className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          />
+        ) : null}
         <button
           type="button"
           aria-label={`What is ${label}?`}
           title={`What is ${label}?`}
           onClick={() => setInfo(true)}
-          className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full text-[11px] font-medium text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+          className="absolute right-2 top-2 z-20 grid h-6 w-6 place-items-center rounded-full text-[11px] font-medium text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
         >
           i
         </button>
@@ -47,7 +66,15 @@ export default function Metric({ label, value, change, tone = "neutral", sub, ba
           {badge}
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <span className="num whitespace-nowrap text-[24px] font-semibold text-foreground">{value}</span>
+          {/* Scales down below sm, and the reason is `whitespace-nowrap`: the
+              figure cannot wrap — deliberately, since a rupee amount broken
+              across two lines is unreadable — so when it does not fit it pushes
+              the card, and the card pushes the document sideways. The widest
+              real value measured here is "25,487 / 26,901" on Product costs, at
+              172px in a 24px face; 20px brings that under 145px and back inside
+              a two-column track. Same responsive-figure pattern as the overview
+              hero. */}
+          <span className="num whitespace-nowrap text-[20px] font-semibold text-foreground sm:text-[24px]">{value}</span>
           {change ? (
             <span className={`num inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${TONE[tone] || TONE.neutral}`}>
               {change}
