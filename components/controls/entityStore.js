@@ -23,9 +23,28 @@ import { useSyncExternalStore } from "react";
 // entity on each load, which is also what the server treats as unfiltered when
 // there is only one.
 
+// `resolved` exists because `id: null` had to mean two different things and
+// could not: "no entity is selected" and "we have not asked yet". Pages read
+// the id straight into their fetch query, so before GET /legal-entities came
+// back every page fetched UNFILTERED, then fetched again the moment the entity
+// arrived.
+//
+// Measured on the live deployment: the overview fired seventeen unfiltered
+// metric requests, GET /legal-entities queued BEHIND them and took 4563ms, and
+// when it finally landed all seventeen fired again with ?legalEntityId= — so
+// the entity lookup was delayed by the very requests that needed it, and the
+// server spent 4.5 seconds computing results the browser had already aborted.
+// Aborting a fetch does not stop Express finishing the work.
+//
+// DateRangeContext already had exactly this guard for the stored date range
+// (`ready: hydrated`, and the comment there describes the same failure). This
+// gives the entity the same one, so the fix reaches all fourteen pages through
+// the flag they already wait on.
 const listeners = new Set();
-let snapshot = Object.freeze({ id: null });
-const SERVER_SNAPSHOT = Object.freeze({ id: null });
+let snapshot = Object.freeze({ id: null, resolved: false });
+// The server render never has an entity and never will — waiting for one would
+// hold the first paint forever.
+const SERVER_SNAPSHOT = Object.freeze({ id: null, resolved: true });
 
 function subscribe(listener) {
   listeners.add(listener);
@@ -44,7 +63,20 @@ export function setSelectedEntity(id) {
   if (snapshot.id === id) return;
   // A new frozen object, because useSyncExternalStore compares by reference
   // and a mutated one would never re-render.
-  snapshot = Object.freeze({ id: id ?? null });
+  snapshot = Object.freeze({ id: id ?? null, resolved: snapshot.resolved });
+  for (const listener of listeners) listener();
+}
+
+/**
+ * Called once GET /legal-entities has answered — including when it answers
+ * with nothing, or fails. Both are real answers: "this org has no entities" is
+ * a resolved state, and a failed lookup must release the pages rather than
+ * leave every dashboard waiting on a request that is never coming back.
+ */
+export function markEntitiesResolved(id) {
+  const next = id ?? null;
+  if (snapshot.resolved && snapshot.id === next) return;
+  snapshot = Object.freeze({ id: next, resolved: true });
   for (const listener of listeners) listener();
 }
 

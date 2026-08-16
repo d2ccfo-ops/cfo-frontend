@@ -183,7 +183,7 @@ export function DateRangeProvider({ children }) {
   // page already appends, so entity filtering reaches all fourteen pages
   // through one change here rather than through fourteen call sites — twelve
   // of which somebody would get right.
-  const { id: legalEntityId } = useSelectedEntity();
+  const { id: legalEntityId, resolved: entityResolved } = useSelectedEntity();
 
   const setPreset = useCallback((next) => {
     writeStore({ ...getSnapshot(), preset: next });
@@ -224,9 +224,13 @@ export function DateRangeProvider({ children }) {
       // would fire one request for the default period, paint those numbers,
       // then immediately fire another for the restored one — a visible flash of
       // the wrong period and a wasted round trip on every page load.
-      ready: hydrated,
+      // AND the entity, for the same reason. Before this, `ready` flipped as
+      // soon as the stored date was read — while the legal entity was still
+      // null-because-unknown — so every page fetched unfiltered and then
+      // refetched ~4.5s later when GET /legal-entities landed.
+      ready: hydrated && entityResolved,
     };
-  }, [preset, custom, setPreset, setCustom, hydrated, legalEntityId]);
+  }, [preset, custom, setPreset, setCustom, hydrated, legalEntityId, entityResolved]);
 
   return <DateRangeContext.Provider value={value}>{children}</DateRangeContext.Provider>;
 }

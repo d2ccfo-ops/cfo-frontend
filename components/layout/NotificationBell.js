@@ -47,7 +47,7 @@ function timeAgo(iso) {
 }
 
 export default function NotificationBell() {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(null);
@@ -55,9 +55,19 @@ export default function NotificationBell() {
   const [error, setError] = useState(null);
   const wrapRef = useRef(null);
 
+  // Read through a ref, same as app/(dashboard)/page.js: Clerk hands back a
+  // new getToken identity after hydration, which recreated `load` and re-ran
+  // the polling effect — measured as the notifications list fetching twice on
+  // every page load. The ref always holds the current function; identity
+  // changes no longer restart anything.
+  const getTokenRef = useRef(getToken);
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
+
   const load = useCallback(async () => {
     try {
-      const token = await getToken();
+      const token = await getTokenRef.current();
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/notifications?limit=30`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -69,9 +79,12 @@ export default function NotificationBell() {
     } catch (e) {
       setError(e.message);
     }
-  }, [getToken]);
+  }, []);
 
   useEffect(() => {
+    // Wait for Clerk — a pre-hydration run sends `Bearer null` and burns a
+    // request on a guaranteed 401.
+    if (!isLoaded) return;
     let cancelled = false;
     const tick = async () => {
       if (cancelled) return;
@@ -88,7 +101,7 @@ export default function NotificationBell() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [load]);
+  }, [isLoaded, load]);
 
   // Click-outside and Escape. Without these the panel stays open behind
   // whatever a founder clicks next, over the numbers they were trying to read.

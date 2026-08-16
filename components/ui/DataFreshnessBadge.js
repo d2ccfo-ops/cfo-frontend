@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth, useOrganization } from "@clerk/nextjs";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const TONE = {
   fresh: { fg: "text-success", dot: "bg-success" },
@@ -36,15 +36,26 @@ function describeAge(minutes) {
 // Pass `label`/`status` to render a specific state; with neither, it fetches
 // the real one from GET /metrics/freshness.
 export default function DataFreshnessBadge({ label, status }) {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded } = useAuth();
   const { organization } = useOrganization();
   const controlled = label !== undefined || status !== undefined;
 
   const [state, setState] = useState(null);
 
+  // Read through a ref, same as app/(dashboard)/page.js: Clerk hands back a
+  // NEW getToken identity on hydration and on every ~60s token rotation, and
+  // with getToken in the deps each rotation tore this effect down and re-ran
+  // it — one extra fetch per rotation, measured as freshness firing twice per
+  // poll cycle. The ref always holds the current function; nothing re-renders
+  // or refetches when only its identity changes.
+  const getTokenRef = useRef(getToken);
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
+
   const fetchFreshness = useCallback(async () => {
     try {
-      const token = await getToken();
+      const token = await getTokenRef.current();
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/freshness`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -80,10 +91,15 @@ export default function DataFreshnessBadge({ label, status }) {
     } catch {
       return null;
     }
-  }, [getToken]);
+  }, []);
 
   useEffect(() => {
     if (controlled) return;
+    // Wait for Clerk before the first request — on a hard load this effect
+    // used to run pre-hydration, send `Authorization: Bearer null`, collect a
+    // 401, and then refetch when hydration re-ran it. Gating on isLoaded
+    // means one request, sent when it can succeed.
+    if (!isLoaded) return;
     let cancelled = false;
     const load = () => {
       fetchFreshness().then((next) => {
@@ -96,7 +112,7 @@ export default function DataFreshnessBadge({ label, status }) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [controlled, fetchFreshness, organization?.id]);
+  }, [controlled, isLoaded, fetchFreshness, organization?.id]);
 
   const shown = controlled ? { label, status } : state;
   // Renders nothing until the real answer arrives, rather than a placeholder

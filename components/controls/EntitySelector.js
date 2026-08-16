@@ -4,7 +4,7 @@ import { useAuth, useOrganization } from "@clerk/nextjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Icon, ENTITY_PATHS } from "@/components/icons";
-import { setSelectedEntity } from "./entityStore";
+import { markEntitiesResolved, setSelectedEntity } from "./entityStore";
 
 // The legal entity the numbers belong to — the GST-registered company, not the
 // Clerk workspace.
@@ -64,7 +64,17 @@ export default function EntitySelector({ onChange }) {
       // query string every page appends. Without this the picker changes a
       // label and nothing else — which is what it did before P5.6. Now called
       // from the effect's async continuation, which is not a render.
-      setSelectedEntity(next);
+      //
+      // markEntitiesResolved rather than setSelectedEntity: it also flips the
+      // store's `resolved` flag, which is what releases every page's held
+      // fetch. Until it fires, pages wait instead of fetching unfiltered and
+      // then refetching — see the header of entityStore.js.
+      markEntitiesResolved(next);
+    }).catch(() => {
+      // A failed lookup is still an answer. Leaving `resolved` false would
+      // hold every page's data fetch forever on a request that is not coming
+      // back — a blank dashboard instead of an unfiltered one.
+      if (!cancelled) markEntitiesResolved(selectedIdRef.current ?? null);
     });
     return () => {
       cancelled = true;
