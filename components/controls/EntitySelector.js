@@ -17,7 +17,7 @@ import { markEntitiesResolved, setSelectedEntity } from "./entityStore";
 // user actually signed in to is used instead.
 
 export default function EntitySelector({ onChange }) {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded: authLoaded } = useAuth();
   const { organization, isLoaded: orgLoaded } = useOrganization();
 
   const [entities, setEntities] = useState(null); // null = loading
@@ -27,9 +27,19 @@ export default function EntitySelector({ onChange }) {
   const selectedIdRef = useRef(null);
   const [open, setOpen] = useState(false);
 
+  // Through a ref rather than a dependency. Clerk hands back a NEW getToken on
+  // hydration and on every ~60s rotation, and fetchEntities listed it — so the
+  // effect below tore down and re-ran, fetching the entity list a second time.
+  // Measured on the live deployment: two GET /legal-entities on every load,
+  // warm as well as cold.
+  const getTokenRef = useRef(getToken);
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
+
   const fetchEntities = useCallback(async () => {
     try {
-      const token = await getToken();
+      const token = await getTokenRef.current();
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/legal-entities`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -39,9 +49,21 @@ export default function EntitySelector({ onChange }) {
     } catch {
       return [];
     }
-  }, [getToken]);
+  }, []);
 
   useEffect(() => {
+    // Nothing goes out before Clerk has a session. It resolves getToken to null
+    // until then, so the first call left as `Bearer null` and took a 401 — and
+    // a 401 here is not the harmless wasted round trip it looks like. The
+    // handler below cannot tell it apart from an empty list, so it marks the
+    // entity RESOLVED with no id, which is the flag that releases all
+    // seventeen of the overview's metric requests. They would run unscoped.
+    //
+    // For a single-entity org that is the same answer either way. For an org
+    // with two GST registrations it is the consolidated figure — and the header
+    // still falls back to the workspace name in that state, so it is at least
+    // not labelled as one company. The gate removes the question.
+    if (!authLoaded) return;
     let cancelled = false;
     fetchEntities().then((list) => {
       if (cancelled) return;
@@ -82,7 +104,7 @@ export default function EntitySelector({ onChange }) {
     // Refetched when the active organisation changes — the entity list is
     // org-scoped, so keeping the previous org's entity on screen would label
     // the whole dashboard with the wrong company.
-  }, [fetchEntities, organization?.id]);
+  }, [fetchEntities, organization?.id, authLoaded]);
 
   const selected = entities?.find((e) => e.id === selectedId) ?? null;
 
