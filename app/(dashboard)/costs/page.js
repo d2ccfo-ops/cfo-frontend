@@ -262,7 +262,15 @@ export default function CostsPage() {
           </div>
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-4">
+        {/* sm:grid-cols-2 xl:grid-cols-4, matching the other six metric grids —
+            this was the one place that went straight to four columns at sm.
+            The breakpoint is measured against the viewport, but the cards live
+            in the content column, which is 272px narrower because of the
+            sidebar: at 768px that left four tracks of 98px holding a 24px
+            figure that needs 172px ("25,487 / 26,901"), so the row pushed the
+            whole document 62px sideways. Four columns only earns its keep at
+            xl, where the column is wide enough to hold the number. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric
             label="Value coverage"
             value={coverage ? `${coverage.valueCoveragePct}%` : "—"}

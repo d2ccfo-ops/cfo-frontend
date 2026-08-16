@@ -3,6 +3,7 @@
 import { useAuth, useOrganization } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
 import useFlipList from "@/components/hooks/useFlipList";
+import { loadProgressively } from "@/components/lib/progressiveLoad";
 import TopNav from "@/components/layout/TopNav";
 import { AskCfoButton } from "@/components/ai/AskCfoOverlay";
 import MetricCard from "@/components/ui/MetricCard";
@@ -135,6 +136,56 @@ const EXTRA_METRICS = [
     needs: "Connect a bank account",
     formula: "Available cash \u00f7 monthly net burn (\u00a785)" },
 ];
+
+// WHICH REQUEST FEEDS WHICH CARD.
+//
+// The seventeen requests below are independent and land at very different
+// times, so the page paints each answer as it arrives rather than holding
+// everything for the slowest. That only works if a card knows which request
+// its own figure comes from: rendering a card whose payload has not arrived
+// makes the derivation fall through to "No data / Not connected", which is a
+// confident false statement about a source that is merely slow.
+//
+// Derived from the live* branches in the card derivation below — a label
+// missing here (Pending settlements) has no live source at all and correctly
+// renders its "not connected" state immediately rather than waiting.
+const LIVE_KEYS = [
+  "revenue", "rto", "cash", "availableCash", "adSpend", "adEfficiency", "sales",
+  "freshness", "inventoryValue", "contribution", "ladder", "products", "burn",
+  "payables", "recon", "anomalies", "snapshot",
+];
+
+const CARD_SOURCES = {
+  "Available cash": ["availableCash"],
+  // revenue alone. The hero's sparkline comes from `snapshot`, deliberately
+  // NOT listed: Sparkline renders nothing below its minimum point count, so
+  // "no line yet" is already the honest rendering, and gating on it would hold
+  // the three most important numbers on the page for the slowest request.
+  "Net revenue (MTD)": ["revenue"],
+  "Contribution margin": ["contribution"],
+  "Cash received (MTD)": ["cash"],
+  "Ad spend (MTD)": ["adSpend"],
+  "RTO rate": ["rto"],
+  "Refund rate": ["sales"],
+  "Orders (MTD)": ["sales"],
+  "Marketing efficiency (ROAS)": ["adEfficiency"],
+  "Upcoming payments": ["payables"],
+  "Data freshness": ["freshness"],
+  "Gross sales (MTD)": ["sales"],
+  "Average order value": ["sales"],
+  "Inventory value": ["inventoryValue"],
+  "Burn rate": ["burn"],
+  Runway: ["burn"],
+};
+
+// The two lists at the foot of the page each read several payloads, so they
+// wait for exactly their own inputs and no more.
+// Exactly the inputs each derivation reads — toAlerts(anomalies) plus
+// deriveSystemHealth's five, and deriveActions' three. An extra key here is
+// not a bug but a needless wait: it would hold the list for a request whose
+// answer it never reads.
+const ANOMALY_SOURCES = ["anomalies", "ladder", "contribution", "freshness", "burn", "recon"];
+const ACTION_SOURCES = ["contribution", "freshness", "products"];
 
 // The Overview's charts and product tables are all live now, so the mock
 // series that used to feed them are gone rather than left dormant — dead mock
@@ -406,6 +457,17 @@ export default function OverviewPage() {
 
   const { getToken } = useAuth();
   const { organization } = useOrganization();
+  // getToken is something this page CALLS, not something it reacts to — but
+  // Clerk hands back a new function identity once the session finishes
+  // hydrating, and the live-data effect below listed it as a dependency. That
+  // made the whole seventeen-request load run twice on every page view, the
+  // second wave starting ~4s after the first while the first was still in
+  // flight. Held in a ref so the effect depends only on what actually changes
+  // the ANSWER: the date range.
+  const getTokenRef = useRef(getToken);
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
   const [liveRevenue, setLiveRevenue] = useState(null);
   const [liveRto, setLiveRto] = useState(null);
   const [liveCash, setLiveCash] = useState(null);
@@ -426,15 +488,38 @@ export default function OverviewPage() {
   const [livePayables, setLivePayables] = useState(null);
   const [liveRecon, setLiveRecon] = useState(null);
   const [liveAnomalies, setLiveAnomalies] = useState(null);
-  // Starts true so the very first paint is skeletons rather than mock numbers
-  // that get replaced a moment later — that flash is what made the old page
-  // feel like it was showing real data when it wasn't.
-  const [loadingLive, setLoadingLive] = useState(true);
+  // WHICH REQUESTS ARE STILL IN FLIGHT, so each card can wait for its own
+  // answer instead of for the slowest of seventeen. Measured live: the
+  // cheapest of these endpoints answers in ~40ms and the dearest in ~1,000ms,
+  // and the old single `loadingLive` flag held every card at a skeleton until
+  // the last one landed.
+  //
+  // A card must never be rendered against a payload that has not arrived yet:
+  // the derivation below falls through to "No data / Not connected" when its
+  // live* payload is null, which would state that a source is missing when it
+  // is merely slow. So a card shows ITS OWN skeleton until ITS OWN key clears,
+  // and only then renders — including its legitimate empty state.
+  const [pending, setPending] = useState(() => new Set(LIVE_KEYS));
   // True when the request to cfo-backend itself failed (network error, backend
   // down). Distinct from "the backend answered and had nothing" — the cards and
   // the banner below say which one it is rather than showing the same blank.
   const [liveFailed, setLiveFailed] = useState(false);
+  // WHICH individual requests failed. Before this page loaded progressively,
+  // Promise.all rejected on the first failure and every card said "Backend
+  // unreachable" — including the sixteen whose data had arrived fine. Now each
+  // card answers for its own request: one that failed says it could not ask,
+  // and one that simply has no source says so instead. Those are different
+  // facts and a founder acts differently on each.
+  const [failedKeys, setFailedKeys] = useState(() => new Set());
   const { query: dateQuery, key: dateKey, preset: datePreset, ready: dateReady } = useDateRange();
+
+  // True while a card's own source has not answered yet. A card with no live
+  // source (Pending settlements) is never pending — its "not connected" state
+  // is already the truth and it paints on the first frame.
+  const cardPending = (label) => (CARD_SOURCES[label] ?? []).some((k) => pending.has(k));
+  const anyPending = (keys) => keys.some((k) => pending.has(k));
+  // "We could not ask" — true only for a card whose OWN request failed.
+  const cardFailed = (label) => (CARD_SOURCES[label] ?? []).some((k) => failedKeys.has(k));
 
   // Local rows paint immediately; for the material metrics (evidenceKey set)
   // the §21 server envelope is fetched and appended when it lands — the
@@ -585,92 +670,140 @@ export default function OverviewPage() {
     // doesn't fetch the default period, paint it, then refetch the real one.
     if (!dateReady) return;
     let cancelled = false;
+    // The `cancelled` flag alone only stopped the RESULTS being used — every
+    // one of the seventeen requests kept running to completion on the server,
+    // burning the same CPU as a wanted one. On a single-threaded Node process
+    // that is not free: superseded work competes with the work you are waiting
+    // for. Aborting actually cancels it.
+    const controller = new AbortController();
     async function loadLive() {
-      setLoadingLive(true);
       setLiveFailed(false);
+      // Back to skeletons for the new period. Without this the cards would
+      // keep showing the OLD range's figures under the new range's heading
+      // until each request returned — a wrong number presented as a filtered
+      // one, which is the worst shape a wrong number can take.
+      setPending(new Set(LIVE_KEYS));
+      setFailedKeys(new Set());
+      // Clear the PERIOD-SCOPED payloads. Pending gates the skeletons during a
+      // normal load, but a request that FAILS settles its key without writing
+      // anything — and the card would then match on the payload still held
+      // from the last period and render those figures under this period's
+      // heading. A wrong number presented as a filtered one is the worst shape
+      // a wrong number can take.
+      //
+      // The undated requests (freshness, inventory-value, burn-runway,
+      // payables, anomalies, snapshot-history) are deliberately NOT cleared:
+      // they carry no date parameter, so their answer is identical across a
+      // range change and dropping them would blank cards for no reason.
+      setLiveRevenue(null);
+      setLiveRto(null);
+      setLiveCash(null);
+      setLiveAvailableCash(null);
+      setLiveAdSpend(null);
+      setLiveAdEfficiency(null);
+      setLiveSales(null);
+      setLiveContribution(null);
+      setLiveLadder(null);
+      setLiveProducts(null);
+      setLiveRecon(null);
       try {
-        const token = await getToken();
-        const authed = { headers: { Authorization: `Bearer ${token}` } };
+        const token = await getTokenRef.current();
+        const authed = { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [revenueRes, rtoRes, cashRes, availableCashRes, adSpendRes, adEfficiencyRes, salesRes, freshnessRes, inventoryValueRes, contributionRes, ladderRes, productsRes, burnRes, payablesRes, reconRes, anomaliesRes, snapshotRes] = await Promise.all([
-          fetch(`${api}/metrics/revenue${dateQuery}`, authed),
-          fetch(`${api}/metrics/rto-rate${dateQuery}`, authed),
-          fetch(`${api}/metrics/cash-received${dateQuery}`, authed),
-          fetch(`${api}/metrics/available-cash${dateQuery}`, authed),
-          fetch(`${api}/metrics/ad-spend${dateQuery}`, authed),
-          fetch(`${api}/metrics/ad-efficiency${dateQuery}`, authed),
-          fetch(`${api}/metrics/sales${dateQuery}`, authed),
-          fetch(`${api}/metrics/freshness`, authed),
-          fetch(`${api}/metrics/inventory-value`, authed),
-          fetch(`${api}/metrics/contribution-margin${dateQuery}`, authed),
-          fetch(`${api}/metrics/revenue-ladder${dateQuery}`, authed),
-          fetch(`${api}/metrics/product-profitability${dateQuery}`, authed),
-          fetch(`${api}/metrics/burn-runway`, authed),
-          fetch(`${api}/metrics/payables`, authed),
-          // For the COD position card — the landing page never showed the money
-          // couriers are holding (or have gone silent on), which is the single
-          // largest number in the system.
-          fetch(`${api}/reconciliation/summary${dateQuery}`, authed),
-          // §17 anomalies. Deliberately not date-filtered — the engine runs
-          // on its own trailing-28-day window, so scoping to the picker
-          // would hide findings whose window doesn't line up with it.
-          fetch(`${api}/anomalies`, authed),
-          // Captured nightly history, for the hero sparklines. 30 days
-          // requested; far fewer usually come back, and that is the point —
-          // the line is only drawn from nights that were actually measured.
-          fetch(`${api}/metrics/snapshot-history?days=30`, authed),
-        ]);
-        if (cancelled) return;
-        if (revenueRes.ok) setLiveRevenue(await revenueRes.json());
-        if (rtoRes.ok) setLiveRto(await rtoRes.json());
-        if (cashRes.ok) setLiveCash(await cashRes.json());
-        if (availableCashRes.ok) setLiveAvailableCash(await availableCashRes.json());
-        if (adSpendRes.ok) setLiveAdSpend(await adSpendRes.json());
-        if (adEfficiencyRes.ok) setLiveAdEfficiency(await adEfficiencyRes.json());
-        if (salesRes.ok) setLiveSales(await salesRes.json());
-        if (freshnessRes.ok) setLiveFreshness(await freshnessRes.json());
-        if (snapshotRes.ok) {
-          const snap = await snapshotRes.json();
-          // Shape is { series: [{ metric: DailyMetricSpec, points: [...] }] },
-          // already ordered oldest-first by periodStart, which is the order the
-          // sparkline draws in. A point whose value is null was captured but
-          // not measurable that night; dropping it leaves a shorter real series
-          // rather than a line through a gap that was never observed.
-          const byKey = {};
-          for (const row of snap.series ?? []) {
-            const key = row?.metric?.key;
-            if (!key) continue;
-            const pts = (row.points ?? [])
-              .map((pt) => (pt.value ?? pt.valueNumeric))
-              .filter((v) => typeof v === "number" && Number.isFinite(v));
-            if (pts.length) byKey[key] = pts;
+        // No Promise.all barrier: each response is applied the moment it
+        // lands, so a 40ms card is on screen while a 1,000ms one is still in
+        // flight. See components/lib/progressiveLoad.js.
+        const { ok } = await loadProgressively(
+          [
+            { key: "revenue", url: `${api}/metrics/revenue${dateQuery}`, apply: setLiveRevenue },
+            { key: "rto", url: `${api}/metrics/rto-rate${dateQuery}`, apply: setLiveRto },
+            { key: "cash", url: `${api}/metrics/cash-received${dateQuery}`, apply: setLiveCash },
+            { key: "availableCash", url: `${api}/metrics/available-cash${dateQuery}`, apply: setLiveAvailableCash },
+            { key: "adSpend", url: `${api}/metrics/ad-spend${dateQuery}`, apply: setLiveAdSpend },
+            { key: "adEfficiency", url: `${api}/metrics/ad-efficiency${dateQuery}`, apply: setLiveAdEfficiency },
+            { key: "sales", url: `${api}/metrics/sales${dateQuery}`, apply: setLiveSales },
+            { key: "freshness", url: `${api}/metrics/freshness`, apply: setLiveFreshness },
+            { key: "inventoryValue", url: `${api}/metrics/inventory-value`, apply: setLiveInventoryValue },
+            { key: "contribution", url: `${api}/metrics/contribution-margin${dateQuery}`, apply: setLiveContribution },
+            { key: "ladder", url: `${api}/metrics/revenue-ladder${dateQuery}`, apply: setLiveLadder },
+            { key: "products", url: `${api}/metrics/product-profitability${dateQuery}`, apply: setLiveProducts },
+            { key: "burn", url: `${api}/metrics/burn-runway`, apply: setLiveBurn },
+            { key: "payables", url: `${api}/metrics/payables`, apply: setLivePayables },
+            // For the COD position card — the landing page never showed the money
+            // couriers are holding (or have gone silent on), which is the single
+            // largest number in the system.
+            { key: "recon", url: `${api}/reconciliation/summary${dateQuery}`, apply: setLiveRecon },
+            // §17 anomalies. Deliberately not date-filtered — the engine runs
+            // on its own trailing-28-day window, so scoping to the picker
+            // would hide findings whose window doesn't line up with it.
+            { key: "anomalies", url: `${api}/anomalies`, apply: setLiveAnomalies },
+            // Captured nightly history, for the hero sparklines. 30 days
+            // requested; far fewer usually come back, and that is the point —
+            // the line is only drawn from nights that were actually measured.
+            {
+              key: "snapshot",
+              url: `${api}/metrics/snapshot-history?days=30`,
+              apply: (snap) => {
+                // Shape is { series: [{ metric: DailyMetricSpec, points: [...] }] },
+                // already ordered oldest-first by periodStart, which is the order the
+                // sparkline draws in. A point whose value is null was captured but
+                // not measurable that night; dropping it leaves a shorter real series
+                // rather than a line through a gap that was never observed.
+                const byKey = {};
+                for (const row of snap.series ?? []) {
+                  const key = row?.metric?.key;
+                  if (!key) continue;
+                  const pts = (row.points ?? [])
+                    .map((pt) => (pt.value ?? pt.valueNumeric))
+                    .filter((v) => typeof v === "number" && Number.isFinite(v));
+                  if (pts.length) byKey[key] = pts;
+                }
+                setHeroSeries(byKey);
+              },
+            },
+          ],
+          {
+            init: authed,
+            isCancelled: () => cancelled,
+            // A new Set each time, because React compares by reference — a
+            // mutated one would never re-render and no card would ever leave
+            // its skeleton.
+            onSettled: (key, ok) => {
+              if (!ok) setFailedKeys((prev) => new Set(prev).add(key));
+              setPending((prev) => {
+                const next = new Set(prev);
+                next.delete(key);
+                return next;
+              });
+            },
           }
-          setHeroSeries(byKey);
-        }
-        if (inventoryValueRes.ok) setLiveInventoryValue(await inventoryValueRes.json());
-        if (contributionRes.ok) setLiveContribution(await contributionRes.json());
-        if (ladderRes.ok) setLiveLadder(await ladderRes.json());
-        if (productsRes.ok) setLiveProducts(await productsRes.json());
-        if (burnRes.ok) setLiveBurn(await burnRes.json());
-        if (payablesRes.ok) setLivePayables(await payablesRes.json());
-        if (reconRes.ok) setLiveRecon(await reconRes.json());
-        if (anomaliesRes.ok) setLiveAnomalies(await anomaliesRes.json());
+        );
+        // Not one failure — every single request failed, which means the
+        // backend could not be reached at all rather than having nothing to
+        // say. This flag is what separates "nothing is connected" from "we
+        // could not ask", two very different things that used to look
+        // identical.
+        if (!cancelled && ok === 0) setLiveFailed(true);
       } catch {
-        // Every live* stays null and the cards render their "No data" state.
-        // This flag is what separates "nothing is connected" from "we could not
-        // ask" — two very different things that used to look identical.
-        if (!cancelled) setLiveFailed(true);
-      } finally {
-        // Guarded: a superseded request (user changed the range again before
-        // this one landed) must not clear the skeleton the newer request set.
-        if (!cancelled) setLoadingLive(false);
+        // The token itself failed, so no request was ever made and nothing
+        // will ever settle these keys. Release every card from its skeleton
+        // and mark all sources unreachable — a skeleton with nothing behind
+        // it is a page that hangs, which is worse than an honest failure.
+        if (!cancelled) {
+          setLiveFailed(true);
+          setFailedKeys(new Set(LIVE_KEYS));
+          setPending(new Set());
+        }
       }
     }
     loadLive();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [getToken, dateQuery, dateKey, dateReady]);
+    // getToken deliberately absent — see getTokenRef above. Listing it made
+    // this effect re-run when Clerk rehydrated the session, doubling the load.
+  }, [dateQuery, dateKey, dateReady]);
 
   // Charts read the same live payloads the cards do, so a chart can never
   // disagree with the card above it. (The revenue-vs-cash series is built
@@ -1264,19 +1397,24 @@ export default function OverviewPage() {
     // itself, which carried a mock value — so an unconnected source, an empty
     // period or an unreachable backend all rendered as confident figures. The
     // card now states that it has no answer and what would give it one.
+    //
+    // Asked per card, not per page: this card's own request may have failed
+    // while the rest of the page loaded perfectly, and "we could not ask" is a
+    // different fact from "nothing is connected".
+    const failed = cardFailed(m.label);
     return {
       ...m,
       value: "No data",
-      change: liveFailed ? "Backend unreachable" : m.needs,
+      change: failed ? "Backend unreachable" : m.needs,
       changeDirection: "flat",
       status: "neutral",
-      statusLabel: liveFailed ? "Unavailable" : "Not connected",
-      comparison: liveFailed ? "The last request to cfo-backend failed" : m.formula,
+      statusLabel: failed ? "Unavailable" : "Not connected",
+      comparison: failed ? "The last request to cfo-backend failed" : m.formula,
       updated: "—",
-      evidence: ev(m.label, liveFailed ? "Could not reach cfo-backend" : "No data source connected", [
+      evidence: ev(m.label, failed ? "Could not reach cfo-backend" : "No data source connected", [
         { label: "Formula", value: m.formula },
         { label: "Needs", value: m.needs },
-        ...(liveFailed
+        ...(failed
           ? [{ label: "Status", value: "The backend did not respond — this is a connection problem, not a zero" }]
           : [{ label: "Why blank", value: "A figure shown here with no source behind it is one a founder would act on" }]),
       ]),
@@ -1330,21 +1468,24 @@ export default function OverviewPage() {
           <h2 className="text-[19px] font-semibold tracking-[-0.02em] text-foreground">Today at a glance</h2>
           <p className="mb-4 mt-0.5 text-[13px] text-muted-foreground">The three numbers that decide this week.</p>
           <div className="grid gap-4 lg:grid-cols-3">
-            {loadingLive
-              ? HERO_METRICS.map((m) => (
-                  <div key={m.label} className="gcard h-[212px] animate-pulse p-7" role="status" aria-busy="true">
-                    <span className="sr-only">Loading {m.label}</span>
-                  </div>
-                ))
-              : heroMetrics.map((m, i) => (
-                  <HeroMetric
-                    key={m.label}
-                    m={m}
-                    ink={i === 0}
-                    points={heroSeries[m.snapshotKey]}
-                    onEvidence={() => openDrawer(m.evidence, m.evidenceKey)}
-                  />
-                ))}
+            {/* Per card, not per row: available cash answers in ~50ms while
+                contribution margin takes ~230ms, and the fast one has no
+                reason to wait. */}
+            {heroMetrics.map((m, i) =>
+              cardPending(m.label) ? (
+                <div key={m.label} className="gcard h-[212px] animate-pulse p-7" role="status" aria-busy="true">
+                  <span className="sr-only">Loading {m.label}</span>
+                </div>
+              ) : (
+                <HeroMetric
+                  key={m.label}
+                  m={m}
+                  ink={i === 0}
+                  points={heroSeries[m.snapshotKey]}
+                  onEvidence={() => openDrawer(m.evidence, m.evidenceKey)}
+                />
+              )
+            )}
           </div>
         </div>
 
@@ -1356,23 +1497,25 @@ export default function OverviewPage() {
                 the cards — not alongside — because showing mock numbers first
                 and swapping them for real ones is precisely the "looks like
                 data when it isn't" problem this dashboard has to avoid. */}
-            {loadingLive
-              ? metrics.map((m) => <MetricCardSkeleton key={m.label} />)
-              : metrics.map((m, i) => (
-                  <MetricCard
-                    key={m.label}
-                    {...m}
-                    badge={<DataStatusBadge dataStatus={m.dataStatus} />}
-                    label={forPeriod(m.label, datePreset)}
-                    onEvidence={() => openDrawer(m.evidence, m.evidenceKey)}
-                    onInfo={() => setInfo(m)}
-                    onRemove={() => removeMetric(m.label)}
-                    onDragStart={() => setDragLabel(m.label)}
-                    onDragEnd={() => setDragLabel(null)}
-                    onDragOver={() => reorderTo(i)}
-                    isDragging={dragLabel === m.label}
-                  />
-                ))}
+            {metrics.map((m, i) =>
+              cardPending(m.label) ? (
+                <MetricCardSkeleton key={m.label} />
+              ) : (
+                <MetricCard
+                  key={m.label}
+                  {...m}
+                  badge={<DataStatusBadge dataStatus={m.dataStatus} />}
+                  label={forPeriod(m.label, datePreset)}
+                  onEvidence={() => openDrawer(m.evidence, m.evidenceKey)}
+                  onInfo={() => setInfo(m)}
+                  onRemove={() => removeMetric(m.label)}
+                  onDragStart={() => setDragLabel(m.label)}
+                  onDragEnd={() => setDragLabel(null)}
+                  onDragOver={() => reorderTo(i)}
+                  isDragging={dragLabel === m.label}
+                />
+              )
+            )}
             <button
               type="button"
               data-flip-key="__add-metric__"
@@ -1534,7 +1677,7 @@ export default function OverviewPage() {
               subtitle="Trailing 6 months · live"
               initialTrend={liveLadder?.trend ?? null}
               initialWindow={liveLadder?.trendWindow ?? null}
-              loading={loadingLive}
+              loading={pending.has("ladder")}
               footnote="Revenue is recognised at order placement (§8); cash is matched bank credit (§44). The gap is settlement lag."
             />
           </div>
@@ -1562,6 +1705,15 @@ export default function OverviewPage() {
           {/* Live, but honestly renamed: this is net revenue by channel, not
               channel PROFITABILITY — profit per channel needs COGS and
               per-channel cost allocation. */}
+          {/* FinancialChart takes no loading prop, and an empty series draws a
+              blank chart that reads as "this store sells through no channels"
+              — so while the ladder is in flight the card is a skeleton rather
+              than a chart of nothing. */}
+          {pending.has("ladder") ? (
+            <div className="gcard h-[336px] animate-pulse p-5" role="status" aria-busy="true">
+              <span className="sr-only">Loading net revenue by channel</span>
+            </div>
+          ) : (
           <FinancialChart
             title="Net revenue by channel"
             subtitle={`${datePreset} · live`}
@@ -1571,6 +1723,7 @@ export default function OverviewPage() {
             showLegend={false}
             footnote="Not channel profitability — that needs COGS and per-channel cost allocation."
           />
+          )}
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1581,15 +1734,24 @@ export default function OverviewPage() {
               products totalling ₹11.8 K reads as broken until you can see it is
               answering for a single morning, which is exactly how a correct
               number ends up reported as a bug. */}
+          {/* Title and subtitle sit outside the `loading` prop, so while the
+              request is in flight the fallback copy would tell the reader to
+              add product costs they may already have. */}
           <LiveProductTable
-            title={liveProducts?.canRankByMargin ? "Top products by contribution" : "Top products by revenue"}
+            title={
+              pending.has("products") || liveProducts?.canRankByMargin
+                ? "Top products by contribution"
+                : "Top products by revenue"
+            }
             subtitle={
-              liveProducts?.canRankByMargin
-                ? `${datePreset} · CM0 — net revenue less product cost (§40)`
-                : `${datePreset} · ranked by net revenue — add product costs to rank by profit`
+              pending.has("products")
+                ? `${datePreset} · live`
+                : liveProducts?.canRankByMargin
+                  ? `${datePreset} · CM0 — net revenue less product cost (§40)`
+                  : `${datePreset} · ranked by net revenue — add product costs to rank by profit`
             }
             rows={liveProducts?.canRankByMargin ? liveProducts.topByMargin : (liveProducts?.topByRevenue ?? [])}
-            loading={loadingLive}
+            loading={pending.has("products")}
             footnote={
               liveProducts
                 ? `Net revenue is line value less discount, GST and returns (§11), using the figures Shopify states per line rather than a share of the order total.${
@@ -1598,12 +1760,22 @@ export default function OverviewPage() {
                 : null
             }
           />
-          {liveProducts?.canRankByMargin && liveProducts.bottomByMargin.length > 0 ? (
+          {/* Pending is its own branch: while the request is in flight the
+              panel below would say costs are missing, which is a statement
+              about the data rather than about the wait. */}
+          {pending.has("products") ? (
+            <LiveProductTable
+              title="Loss-making products"
+              subtitle={`${datePreset} · negative CM0 — selling below product cost (§40)`}
+              rows={[]}
+              loading
+            />
+          ) : liveProducts?.canRankByMargin && liveProducts.bottomByMargin.length > 0 ? (
             <LiveProductTable
               title="Loss-making products"
               subtitle={`${datePreset} · negative CM0 — selling below product cost (§40)`}
               rows={liveProducts.bottomByMargin}
-              loading={loadingLive}
+              loading={false}
             />
           ) : (
             <NoDataPanel
@@ -1633,7 +1805,7 @@ export default function OverviewPage() {
           <div>
             <h2 className="mb-3 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Important anomalies</h2>
             <div className="grid gap-3">
-              {loadingLive ? (
+              {anyPending(ANOMALY_SOURCES) ? (
                 <div className="gcard h-24 animate-pulse p-5" />
               ) : anomalies.length > 0 ? (
                 anomalies.map((a) => (
@@ -1650,7 +1822,7 @@ export default function OverviewPage() {
           <div>
             <h2 className="mb-3 text-[13px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Recommended actions</h2>
             <div className="grid gap-3">
-              {loadingLive ? (
+              {anyPending(ACTION_SOURCES) ? (
                 <div className="gcard h-24 animate-pulse p-5" />
               ) : actions.length > 0 ? (
                 actions.map((a) => (

@@ -7,6 +7,7 @@ import AlertCard from "@/components/ui/AlertCard";
 import NoDataPanel from "@/components/ui/NoDataPanel";
 import ExceptionTaxonomy from "@/components/cards/ExceptionTaxonomy";
 import { useDateRange } from "@/components/controls/DateRangeContext";
+import { loadProgressively } from "@/components/lib/progressiveLoad";
 import { toAlerts } from "@/lib/anomalies";
 import { deriveSystemHealth } from "@/lib/insights";
 
@@ -31,6 +32,23 @@ import { deriveSystemHealth } from "@/lib/insights";
 
 const SEVERITIES = ["critical", "warning", "info"];
 
+// The seven sources, fired together rather than behind a Promise.all barrier.
+// They answer at wildly different speeds — /anomalies reads persisted rows,
+// while the reconciliation summary aggregates shipment status across the whole
+// org — and the taxonomy at the bottom of the page shares nothing with the
+// alerts above it, so it has no business waiting for them.
+const REQUEST_KEYS = ["anomalies", "ladder", "contribution", "freshness", "burn", "recon", "taxonomy"];
+
+// SIX OF THE SEVEN FEED ONE MERGED LIST, so they are gated as a group. The
+// alerts are counted ("All (5) · Critical (2)") and offered an all-clear
+// panel, and both of those are claims about the WHOLE set: a count taken while
+// three sources are still answering is simply wrong, and "Nothing flagged" said
+// over an in-flight request is the exact false all-clear the banner below warns
+// about. Individual alert cards still paint as they arrive — see the skeleton
+// tail in the list — but nothing that summarises them appears until every
+// contributing source has settled.
+const ALERT_KEYS = ["anomalies", "ladder", "contribution", "freshness", "burn", "recon"];
+
 function AlertSkeleton() {
   return (
     <div className="gcard flex flex-col gap-3 p-5" role="status" aria-busy="true">
@@ -47,68 +65,88 @@ export default function ExceptionsPage() {
   const { query: dateQuery, key: dateKey, preset: datePreset, ready: dateReady } = useDateRange();
 
   const [tab, setTab] = useState("all");
-  const [payloads, setPayloads] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [payloads, setPayloads] = useState({});
+  // Which sources have not answered yet. A card reads this rather than a
+  // page-level flag, so a slow source delays only itself.
+  const [pending, setPending] = useState(() => new Set(REQUEST_KEYS));
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!dateReady) return;
     let cancelled = false;
+    // Superseded requests are aborted rather than merely ignored: seven of
+    // these run at once, and a reader walking the date picker back three
+    // months should not leave twenty-one aggregations running server-side.
+    const controller = new AbortController();
     async function load() {
-      setLoading(true);
       setFailed(false);
+      // Back to skeletons, and the previous period's answers discarded. A
+      // payload kept across a date change would be read by deriveSystemHealth
+      // as this period's — and a source that fails in the new load would go on
+      // reporting the old period's figure under the new heading.
+      setPending(new Set(REQUEST_KEYS));
+      setPayloads({});
       try {
         const token = await getToken();
-        const authed = { headers: { Authorization: `Bearer ${token}` } };
+        const authed = { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [anomaliesRes, ladderRes, contributionRes, freshnessRes, burnRes, reconRes, taxonomyRes] = await Promise.all([
-          // §17 anomalies. Not date-filtered: the engine runs on its own
-          // trailing-28-day window and stores the period on each row, so
-          // scoping this to the page's picker would silently hide findings
-          // whose window doesn't line up with it.
-          fetch(`${api}/anomalies`, authed),
-          fetch(`${api}/metrics/revenue-ladder${dateQuery}`, authed),
-          fetch(`${api}/metrics/contribution-margin${dateQuery}`, authed),
-          fetch(`${api}/metrics/freshness`, authed),
-          fetch(`${api}/metrics/burn-runway`, authed),
-          // Money-shaped exceptions (dark COD, unmatched payments, freight
-          // orphans) live in the reconciliation summary.
-          fetch(`${api}/reconciliation/summary${dateQuery}`, authed),
-          // P6.4. The §15 taxonomy — eleven named kinds of reconciliation
-          // exception, derived server-side. Distinct from the anomalies
-          // above: an anomaly is a metric that MOVED, an exception is money
-          // whose whereabouts do not add up.
-          fetch(`${api}/reconciliation/exceptions${dateQuery}`, authed),
-        ]);
-        if (cancelled) return;
-        if (![anomaliesRes, ladderRes, contributionRes, freshnessRes, burnRes, reconRes, taxonomyRes].some((r) => r.ok)) {
-          setFailed(true);
-          return;
-        }
-        setPayloads({
-          anomalies: anomaliesRes.ok ? await anomaliesRes.json() : null,
-          ladder: ladderRes.ok ? await ladderRes.json() : null,
-          contribution: contributionRes.ok ? await contributionRes.json() : null,
-          freshness: freshnessRes.ok ? await freshnessRes.json() : null,
-          burn: burnRes.ok ? await burnRes.json() : null,
-          recon: reconRes.ok ? await reconRes.json() : null,
-          taxonomy: taxonomyRes.ok ? await taxonomyRes.json() : null,
-        });
+        // Functional update: these land in whatever order the network decides.
+        const apply = (key) => (data) => setPayloads((prev) => ({ ...prev, [key]: data }));
+        const { ok } = await loadProgressively(
+          [
+            // §17 anomalies. Not date-filtered: the engine runs on its own
+            // trailing-28-day window and stores the period on each row, so
+            // scoping this to the page's picker would silently hide findings
+            // whose window doesn't line up with it.
+            { key: "anomalies", url: `${api}/anomalies`, apply: apply("anomalies") },
+            { key: "ladder", url: `${api}/metrics/revenue-ladder${dateQuery}`, apply: apply("ladder") },
+            { key: "contribution", url: `${api}/metrics/contribution-margin${dateQuery}`, apply: apply("contribution") },
+            { key: "freshness", url: `${api}/metrics/freshness`, apply: apply("freshness") },
+            { key: "burn", url: `${api}/metrics/burn-runway`, apply: apply("burn") },
+            // Money-shaped exceptions (dark COD, unmatched payments, freight
+            // orphans) live in the reconciliation summary.
+            { key: "recon", url: `${api}/reconciliation/summary${dateQuery}`, apply: apply("recon") },
+            // P6.4. The §15 taxonomy — eleven named kinds of reconciliation
+            // exception, derived server-side. Distinct from the anomalies
+            // above: an anomaly is a metric that MOVED, an exception is money
+            // whose whereabouts do not add up.
+            { key: "taxonomy", url: `${api}/reconciliation/exceptions${dateQuery}`, apply: apply("taxonomy") },
+          ],
+          {
+            init: authed,
+            isCancelled: () => cancelled,
+            onSettled: (key) =>
+              setPending((prev) => {
+                const next = new Set(prev);
+                next.delete(key);
+                return next;
+              }),
+          }
+        );
+        // Bookkeeping only; nothing on screen waited for this promise. Every
+        // request failing is a connection failure. Some failing is not — that
+        // is a source with nothing to say, and its own section says so.
+        if (!cancelled && ok === 0) setFailed(true);
       } catch {
-        if (!cancelled) setFailed(true);
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setFailed(true);
+        // Nothing was ever in flight (the token call threw), so nothing should
+        // keep pretending to load underneath the error.
+        setPending(new Set());
       }
     }
     load();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [getToken, dateQuery, dateKey, dateReady]);
 
+  const alertsPending = ALERT_KEYS.some((k) => pending.has(k));
+
   // Server findings first — they are the persisted, auditable ones, and a
   // founder scanning top-down should hit those before pipeline warnings.
-  const alerts = payloads ? [...toAlerts(payloads.anomalies), ...deriveSystemHealth(payloads)] : [];
+  const alerts = [...toAlerts(payloads.anomalies), ...deriveSystemHealth(payloads)];
   const counts = {
     all: alerts.length,
     ...Object.fromEntries(SEVERITIES.map((s) => [s, alerts.filter((a) => a.severity === s).length])),
@@ -148,7 +186,7 @@ export default function ExceptionsPage() {
           </div>
         ) : null}
 
-        {loading ? null : (
+        {alertsPending ? null : (
           <div className="flex flex-wrap gap-2.5">
             {tabs.map((t) => (
               <button
@@ -166,27 +204,35 @@ export default function ExceptionsPage() {
         )}
 
         <div className="flex flex-col gap-3">
-          {loading ? (
+          {visible.map((a) => (
+            <AlertCard
+              // Server rows carry a stable id; client-derived ones are
+              // identified by their title, which is unique within that set.
+              key={a.id}
+              severity={a.severity}
+              title={a.title}
+              description={a.description}
+              meta={a.meta}
+              actionLabel={a.href ? "Investigate" : undefined}
+              actionHref={a.href}
+            />
+          ))}
+
+          {alertsPending ? (
+            // Three rows while the page is still blank, one trailing row once
+            // findings are on screen: the tail's job there is to say "sources
+            // are still answering", not to imply a number of alerts nobody has
+            // counted yet.
             <>
               <AlertSkeleton />
-              <AlertSkeleton />
-              <AlertSkeleton />
+              {visible.length === 0 ? (
+                <>
+                  <AlertSkeleton />
+                  <AlertSkeleton />
+                </>
+              ) : null}
             </>
-          ) : visible.length > 0 ? (
-            visible.map((a) => (
-              <AlertCard
-                // Server rows carry a stable id; client-derived ones are
-                // identified by their title, which is unique within that set.
-                key={a.id}
-                severity={a.severity}
-                title={a.title}
-                description={a.description}
-                meta={a.meta}
-                actionLabel={a.href ? "Investigate" : undefined}
-                actionHref={a.href}
-              />
-            ))
-          ) : failed ? null : alerts.length === 0 ? (
+          ) : visible.length > 0 || failed ? null : alerts.length === 0 ? (
             <NoDataPanel
               title="Nothing flagged"
               reason="No rule fired against the data available for this period. That is a real all-clear for the checks that CAN run — but note that checks needing bank, ad or settlement data stay silent because those sources aren't connected yet."
@@ -203,7 +249,7 @@ export default function ExceptionsPage() {
             ledger of what does not add up. The severity tabs above
             deliberately do NOT filter this — the taxonomy is complete or
             it is misleading. */}
-        <ExceptionTaxonomy report={payloads?.taxonomy ?? null} loading={loading} />
+        <ExceptionTaxonomy report={payloads.taxonomy ?? null} loading={pending.has("taxonomy")} />
       </div>
     </>
   );

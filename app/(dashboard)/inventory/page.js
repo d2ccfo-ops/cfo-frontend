@@ -9,6 +9,8 @@ import DataFreshnessBadge from "@/components/ui/DataFreshnessBadge";
 import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
 import AbbrCurrency from "@/components/ui/AbbrCurrency";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import MetricSkeleton from "@/components/ui/MetricSkeleton";
+import { loadProgressively } from "@/components/lib/progressiveLoad";
 
 // No mock rows here any more. This page used to fall back to seven invented
 // products ("Vitamin C Serum 30ml" and friends) whenever the fetch hadn't
@@ -51,6 +53,12 @@ const COVER_STATUS_OPTIONS = [
 
 const SEARCH_DEBOUNCE_MS = 350;
 
+// The two metric requests behind the four cards at the top. inventory-value
+// answers from a single sum over variants; inventory-cover has to compute
+// 30-day velocity per SKU first and lands several hundred ms later — which is
+// the whole reason these are no longer collected behind one Promise.all.
+const CARD_KEYS = ["value", "cover"];
+
 // Rows per request. The catalogue is 1,601 products; sending it whole was a
 // 6.12 MB response, most of it stored Shopify payloads nothing on screen reads.
 const PAGE_SIZE = 100;
@@ -62,7 +70,19 @@ export default function InventoryPage() {
   const { getToken } = useAuth();
   const [liveInventoryValue, setLiveInventoryValue] = useState(null);
   const [liveCover, setLiveCover] = useState(null);
-  const [metricsFailed, setMetricsFailed] = useState(false);
+  // WHICH request failed, not merely that one did. A single page-wide flag was
+  // written by either key's failure, so a failing /metrics/inventory-cover made
+  // the Inventory value card announce "Backend unreachable" about a request
+  // that had returned 200 — telling the reader the backend is down when half
+  // the page loaded fine. "We could not ask" and "nothing is connected" are
+  // different facts a founder acts on differently, and each card can only
+  // answer for its own source.
+  const [failedCards, setFailedCards] = useState(() => new Set());
+  // Which card sources haven't answered yet. A card reads only its own key, so
+  // the inventory-value card paints as soon as its number is in hand instead of
+  // waiting on the slower cover computation — and a card still waiting shows a
+  // skeleton rather than claiming "No data" about a source that is merely slow.
+  const [pendingCards, setPendingCards] = useState(() => new Set(CARD_KEYS));
   const [liveProducts, setLiveProducts] = useState(null); // null = not loaded yet, [] = loaded but empty
   const [productTypes, setProductTypes] = useState([]);
   // Pagination state. `total` is the count MATCHING the active filters, not the
@@ -97,19 +117,54 @@ export default function InventoryPage() {
   useEffect(() => {
     let cancelled = false;
     async function loadCards() {
+      // Back to skeletons for a fresh load, so a re-run can't leave the old
+      // figures standing as if they were the new answer.
+      setPendingCards(new Set(CARD_KEYS));
+      // This effect re-runs on every getToken identity change — a token refresh
+      // or an org switch. Clearing the verdicts and the payloads together is
+      // what keeps a reload honest: pendingCards alone only covers the in-flight
+      // window, so a request that settles FAILED would fall straight back onto
+      // the previous org's inventory value under the new org's heading, while a
+      // stale failure flag would keep asserting "Backend unreachable" over a
+      // load whose requests actually succeeded.
+      setFailedCards(new Set());
+      setLiveInventoryValue(null);
+      setLiveCover(null);
+      const api = process.env.NEXT_PUBLIC_API_URL;
       try {
         const token = await getToken();
-        const [valueRes, coverRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/inventory-value`, { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/inventory-cover`, { headers: { Authorization: `Bearer ${token}` } }),
-        ]);
-        if (cancelled) return;
-        if (valueRes.ok) setLiveInventoryValue(await valueRes.json());
-        if (coverRes.ok) setLiveCover(await coverRes.json());
+        await loadProgressively(
+          [
+            { key: "value", url: `${api}/metrics/inventory-value`, apply: setLiveInventoryValue },
+            { key: "cover", url: `${api}/metrics/inventory-cover`, apply: setLiveCover },
+          ],
+          {
+            init: { headers: { Authorization: `Bearer ${token}` } },
+            isCancelled: () => cancelled,
+            onSettled: (key, ok) => {
+              // Recorded against this key alone. Its sibling may have answered
+              // perfectly well, and only the card fed by this request is
+              // entitled to say "we could not ask".
+              if (!ok) setFailedCards((p) => new Set(p).add(key));
+              // New Set, or React sees the same reference and skips the render
+              // that would drop this card's skeleton.
+              setPendingCards((p) => {
+                const next = new Set(p);
+                next.delete(key);
+                return next;
+              });
+            },
+          },
+        );
       } catch {
-        // Cards render their "No data" state. This flag separates "nothing is
-        // connected" from "we could not ask", which used to look identical.
-        if (!cancelled) setMetricsFailed(true);
+        // Only reachable if the token itself couldn't be minted — no request
+        // was made, so nothing will ever settle and the cards have to be
+        // released from their skeletons here or they wait forever.
+        if (!cancelled) {
+          // Both keys, because neither request was ever made.
+          setFailedCards(new Set(CARD_KEYS));
+          setPendingCards(new Set());
+        }
       }
     }
     loadCards();
@@ -284,7 +339,9 @@ export default function InventoryPage() {
         ))}
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {liveInventoryValue ? (
+          {pendingCards.has("value") ? (
+            <MetricSkeleton />
+          ) : liveInventoryValue ? (
             <Metric
               label="Inventory value"
               value={<AbbrCurrency value={liveInventoryValue.value} />}
@@ -297,9 +354,11 @@ export default function InventoryPage() {
             // (₹38.6 L, 42 days, 4 SKUs, ₹6.4 L) shown whenever the fetch failed
             // or nothing was connected — indistinguishable from the live card
             // beside it. A card with no data says so.
-            <Metric label="Inventory value" value="No data" change={metricsFailed ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={metricsFailed ? "The request to cfo-backend failed" : "Retail price × quantity on hand"} />
+            <Metric label="Inventory value" value="No data" change={failedCards.has("value") ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={failedCards.has("value") ? "The request to cfo-backend failed" : "Retail price × quantity on hand"} />
           )}
-          {liveCover ? (
+          {pendingCards.has("cover") ? (
+            <MetricSkeleton />
+          ) : liveCover ? (
             <Metric
               label="Avg. days of cover"
               value={formatDaysOfCover(liveCover.avgDaysOfCover)}
@@ -308,30 +367,32 @@ export default function InventoryPage() {
               sub="Value-weighted, live"
             />
           ) : (
-            <Metric label="Avg. days of cover" value="No data" change={metricsFailed ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={metricsFailed ? "The request to cfo-backend failed" : "Stock on hand ÷ daily sales velocity"} />
+            <Metric label="Avg. days of cover" value="No data" change={failedCards.has("cover") ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={failedCards.has("cover") ? "The request to cfo-backend failed" : "Stock on hand ÷ daily sales velocity"} />
           )}
-          {liveCover ? (
+          {pendingCards.has("cover") ? (
+            <MetricSkeleton />
+          ) : liveCover ? (
             // Clickable: the card names a count, the click shows the SKUs
             // behind it — before, the specific at-risk products were only
             // reachable by knowing to use the status dropdown.
-            <button
-              type="button"
-              className="text-left"
+            // Was a <button> wrapping <Metric>, which nested it inside Metric's
+            // own "i" button — invalid HTML, and the cause of this page's
+            // hydration error. Metric takes the handler directly now.
+            <Metric
+              label="SKUs at risk of stockout"
+              value={`${liveCover.skusAtStockoutRisk.count} SKUs`}
+              change="Within 14 days"
+              tone={liveCover.skusAtStockoutRisk.count > 0 ? "negative" : "positive"}
+              sub="Live, real sales velocity — click to list them below"
               onClick={() => setStatusFilter("stockout_risk")}
-              title="Show these SKUs in the table below"
-            >
-              <Metric
-                label="SKUs at risk of stockout"
-                value={`${liveCover.skusAtStockoutRisk.count} SKUs`}
-                change="Within 14 days"
-                tone={liveCover.skusAtStockoutRisk.count > 0 ? "negative" : "positive"}
-                sub="Live, real sales velocity — click to list them below"
-              />
-            </button>
+              actionLabel="Show these SKUs in the table below"
+            />
           ) : (
-            <Metric label="SKUs at risk of stockout" value="No data" change={metricsFailed ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={metricsFailed ? "The request to cfo-backend failed" : "SKUs with under 14 days of cover"} />
+            <Metric label="SKUs at risk of stockout" value="No data" change={failedCards.has("cover") ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={failedCards.has("cover") ? "The request to cfo-backend failed" : "SKUs with under 14 days of cover"} />
           )}
-          {liveCover ? (
+          {pendingCards.has("cover") ? (
+            <MetricSkeleton />
+          ) : liveCover ? (
             <Metric
               label="Slow-moving stock value"
               value={<AbbrCurrency value={liveCover.slowMovingStockValue.value} />}
@@ -340,7 +401,7 @@ export default function InventoryPage() {
               sub={`${liveCover.slowMovingStockValue.count} SKUs`}
             />
           ) : (
-            <Metric label="Slow-moving stock value" value="No data" change={metricsFailed ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={metricsFailed ? "The request to cfo-backend failed" : "90+ days on hand, or zero sales in 30d"} />
+            <Metric label="Slow-moving stock value" value="No data" change={failedCards.has("cover") ? "Backend unreachable" : "Connect a sales channel"} tone="neutral" sub={failedCards.has("cover") ? "The request to cfo-backend failed" : "90+ days on hand, or zero sales in 30d"} />
           )}
         </div>
 
@@ -447,7 +508,13 @@ export default function InventoryPage() {
         rows={[
           { label: "Inventory value", value: "Sum of on-hand units × retail price per variant — not landed cost" },
           { label: "Why retail", value: "No cost basis exists per variant yet; entering costs is what the Product costs page is for" },
-          { label: "Days of cover", value: `On-hand units ÷ daily velocity over a trailing ${liveCover?.windowDays ?? 30}-day sales window` },
+          // Names a specific window length only once the cover payload is in
+          // hand. The `?? 30` stated "30-day" as fact while the request was
+          // still in flight or after it failed, and could sit there
+          // contradicting the "Avg. days of cover" card, which prints the real
+          // windowDays — the drawer is what a reader opens when a number
+          // surprises them, so it is the last place to guess.
+          { label: "Days of cover", value: liveCover ? `On-hand units ÷ daily velocity over a trailing ${liveCover.windowDays}-day sales window` : "On-hand units ÷ daily velocity over the trailing sales window" },
           { label: "Stockout risk", value: "Days of cover below 14 days" },
           { label: "Slow-moving", value: "Over 90 days of cover, or zero sales in the window" },
         ]}

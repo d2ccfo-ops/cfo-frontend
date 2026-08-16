@@ -610,7 +610,18 @@ export default function ReconciliationPage() {
         ) : null}
 
         {items === null ? (
-          <TableSkeleton rows={8} />
+          // TableSkeleton renders a <tbody>, so it needs its <table>. Rendered
+          // bare here it produced "<tbody> cannot be a child of <div>" — the
+          // parser hoists the tbody out, the browser's DOM stops matching what
+          // React rendered, and the whole subtree gets thrown away and
+          // re-rendered on the client. The wrapper mirrors ReconciliationTable's
+          // own (overflow-x-auto + .table) so the skeleton occupies the same box
+          // the real table will, which is the entire point of a skeleton.
+          <div className="overflow-x-auto">
+            <table className="table">
+              <TableSkeleton rows={8} />
+            </table>
+          </div>
         ) : (
           <>
             {loadFailed ? (

@@ -10,6 +10,7 @@ import NoDataPanel from "@/components/ui/NoDataPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { formatPaise } from "@/components/tables/ReconciliationTable";
 import { useDateRange } from "@/components/controls/DateRangeContext";
+import { loadProgressively } from "@/components/lib/progressiveLoad";
 
 // "Settlements" means money a third party is holding on your behalf, or has
 // released to you. There are two sources and this store has both:
@@ -28,14 +29,36 @@ const LINE_TYPE_LABEL = {
   ADJUSTMENT: "Adjustments & refunds",
 };
 
+// The two sources this page asks for. They answer at very different speeds —
+// the reconciliation summary aggregates shipment status across the whole org,
+// the settlement list reads an imported statement — and nothing about the COD
+// position depends on the payout list or vice versa, so neither should wait
+// for the other.
+const REQUEST_KEYS = ["summary", "payouts"];
+
 export default function SettlementsPage() {
   const { getToken } = useAuth();
   const { range, key: dateKey, preset: datePreset, ready: dateReady } = useDateRange();
 
   const [summary, setSummary] = useState(null);
   const [payouts, setPayouts] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+
+  // Which sources are still in flight, per key rather than one page-level
+  // boolean. A card gated on "is anything still loading" moves at the speed of
+  // the slowest request; a card rendered against a payload that has not landed
+  // yet would announce "No data" or "Connect a courier" about a source that is
+  // merely slow. Only per-key pendency tells the truth on both counts.
+  const [pending, setPending] = useState(() => new Set(REQUEST_KEYS));
+
+  // WHICH source failed, not just that one did. A failed key is settled out of
+  // `pending` deliberately (progressiveLoad.js:58) so the card stops spinning —
+  // but with nothing else recorded it then falls through to its empty arm and
+  // asserts "No gateway statement imported yet" about a request that never
+  // answered. One that failed says it could not ask, one that simply has no
+  // source says so instead; a founder chases a backend for the first and
+  // connects a provider for the second.
+  const [failedKeys, setFailedKeys] = useState(() => new Set());
 
   // Which payout is expanded, and the lines fetched for it. Lines are loaded on
   // demand rather than with the list: 37 payouts carrying 555 lines is fine,
@@ -48,33 +71,74 @@ export default function SettlementsPage() {
   useEffect(() => {
     if (!dateReady) return;
     let cancelled = false;
+    // `cancelled` alone only stops a superseded answer being APPLIED — both
+    // requests still run to completion server-side, and /reconciliation/summary
+    // is the expensive one, aggregating shipment status across the whole org.
+    // Dragging the date picker across four presets left four of those
+    // aggregations competing with the one the reader is actually waiting on.
+    const controller = new AbortController();
     async function load() {
-      setLoading(true);
+      // Back to skeletons for the new window. Leaving the keys settled would
+      // leave last period's figures on screen wearing the new period's heading.
+      setPending(new Set(REQUEST_KEYS));
+      setFailedKeys(new Set());
       setFailed(false);
+      // And the payloads themselves discarded. Pendency alone is not enough: a
+      // key that FAILS in the new load is deleted from `pending` without
+      // `apply` ever running, and every read below (hasPayouts, inPeriod,
+      // byLineType, the PayoutTable's own coverage dates) would then paint the
+      // PREVIOUS window's figures under the new window's heading. Costs nothing
+      // on the success path — each read is already behind a pending gate, so no
+      // card can observe the null.
+      setSummary(null);
+      setPayouts(null);
       try {
         const token = await getToken();
         const headers = { Authorization: `Bearer ${token}` };
         const query = range ? `?from=${range.from}&to=${range.to}` : "";
-        const [summaryRes, payoutRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/reconciliation/summary${query}`, { headers }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/settlements${query}`, { headers }),
-        ]);
-        if (cancelled) return;
-        if (!summaryRes.ok || !payoutRes.ok) {
-          setFailed(true);
-          return;
-        }
-        setSummary(await summaryRes.json());
-        setPayouts(await payoutRes.json());
+        const api = process.env.NEXT_PUBLIC_API_URL;
+        const { ok } = await loadProgressively(
+          [
+            { key: "summary", url: `${api}/reconciliation/summary${query}`, apply: setSummary },
+            { key: "payouts", url: `${api}/settlements${query}`, apply: setPayouts },
+          ],
+          {
+            init: { headers, signal: controller.signal },
+            isCancelled: () => cancelled,
+            onSettled: (key, ok) => {
+              if (!ok) setFailedKeys((prev) => new Set(prev).add(key));
+              // A new Set, or React sees the same reference and skips the
+              // re-render that clears this card's skeleton.
+              setPending((cur) => {
+                const next = new Set(cur);
+                next.delete(key);
+                return next;
+              });
+            },
+          }
+        );
+        // EVERY source failed, not just one. Raising the banner per key put
+        // "Nothing below is live" directly above ₹72.2L of live courier-held
+        // COD whenever /settlements alone 500d — the reader was told to
+        // disbelieve figures that were perfectly good. One source failing is
+        // that card's business, and its own failure arm states it.
+        if (!cancelled && ok === 0) setFailed(true);
       } catch {
-        if (!cancelled) setFailed(true);
-      } finally {
-        if (!cancelled) setLoading(false);
+        // getToken threw, so nothing was ever asked for and no key can settle
+        // itself out of its skeleton — clear them all alongside the banner, and
+        // mark both sources failed so the cards say "couldn't load" rather than
+        // falling through to empty states nobody actually verified.
+        if (!cancelled) {
+          setFailed(true);
+          setFailedKeys(new Set(REQUEST_KEYS));
+          setPending(new Set());
+        }
       }
     }
     load();
     return () => {
       cancelled = true;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getToken, dateKey, dateReady]);
@@ -146,121 +210,162 @@ export default function SettlementsPage() {
 
         {/* ---- Gateway payouts: what a provider says it actually sent ---- */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {loading ? (
-            <>
-              <MetricSkeleton />
-              <MetricSkeleton />
-              <MetricSkeleton />
-              <MetricSkeleton />
-            </>
+          {/* Gated on "payouts", not on both keys: every figure in these two
+              cards comes from the settlement list. The honesty badge reads the
+              summary, and DataStatusBadge renders nothing until it has a
+              status — an absent pill claims nothing, so it can arrive late
+              without the card having said anything untrue in the meantime. */}
+          {pending.has("payouts") ? (
+            <MetricSkeleton />
+          ) : failedKeys.has("payouts") ? (
+            <MetricUnavailable label="Paid out to you" source="settlement list" />
           ) : (
-            <>
-              <Metric
-                label="Paid out to you"
-                badge={<DataStatusBadge dataStatus={summary?.settlementDataStatus} />}
-                value={hasPayouts ? formatPaise(inPeriod.netAmount) : "No data"}
-                change={
-                  hasPayouts
-                    ? `${inPeriod.count.toLocaleString("en-IN")} payout${inPeriod.count === 1 ? "" : "s"}`
-                    : "Import a statement"
-                }
-                tone={hasPayouts ? "positive" : "neutral"}
-                // The all-time figure sits alongside the window's, so a narrow
-                // picker (the default month) can't hide 26 of 37 payouts.
-                sub={
-                  hasPayouts
-                    ? `Net of provider fees, this period · all-time ${totals.allTime.count.toLocaleString("en-IN")} payouts, ${formatPaise(totals.allTime.netAmount)}`
-                    : "No gateway statement imported yet"
-                }
-              />
-              <Metric
-                label="Provider fees"
-                badge={<DataStatusBadge dataStatus={summary?.settlementDataStatus} />}
-                value={grossInPeriod > 0n ? formatPaise(feeInPeriod.toString()) : "No data"}
-                change={feeRate !== null ? `${feeRate.toFixed(2)}% of gross` : "—"}
-                tone={feeRate !== null && feeRate > 3 ? "negative" : "neutral"}
-                sub={grossInPeriod > 0n ? `On ${formatPaise(grossInPeriod.toString())} settled` : ""}
-              />
-              <Metric
-                label="COD collected, not yet remitted"
-                badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
-                value={hasCourierData ? formatPaise(cod.deliveredValue) : "No data"}
-                change={hasCourierData ? `${cod.deliveredCount.toLocaleString("en-IN")} delivered` : "Connect a courier"}
-                tone={hasCourierData ? "warning" : "neutral"}
-                sub={hasCourierData ? "Couriers are holding this cash" : "Needs Shiprocket, Delhivery or ClickPost"}
-              />
-              {/* The bucket this page used to hide inside "in transit". A parcel
-                  picked up 287 days ago is not on its way — the courier stopped
-                  reporting, and that is a different and much worse fact. */}
-              <Metric
-                label="Status unknown"
-                badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
-                value={hasCourierData ? formatPaise(cod.unknownValue) : "No data"}
-                change={
-                  hasCourierData && cod.unknownCount > 0
-                    ? `${cod.unknownCount.toLocaleString("en-IN")} parcels · oldest ${cod.unknownOldestDays}d`
-                    : "—"
-                }
-                tone={hasCourierData && Number(cod.unknownValue) > 0 ? "negative" : "neutral"}
-                sub={
-                  hasCourierData && cod.unknownCount > 0
-                    ? "Picked up over 30 days ago and never scanned again — neither collectible nor written off"
-                    : ""
-                }
-              />
-            </>
+            <Metric
+              label="Paid out to you"
+              badge={<DataStatusBadge dataStatus={summary?.settlementDataStatus} />}
+              value={hasPayouts ? formatPaise(inPeriod.netAmount) : "No data"}
+              change={
+                hasPayouts
+                  ? `${inPeriod.count.toLocaleString("en-IN")} payout${inPeriod.count === 1 ? "" : "s"}`
+                  : "Import a statement"
+              }
+              tone={hasPayouts ? "positive" : "neutral"}
+              // The all-time figure sits alongside the window's, so a narrow
+              // picker (the default month) can't hide 26 of 37 payouts.
+              sub={
+                hasPayouts
+                  ? `Net of provider fees, this period · all-time ${totals.allTime.count.toLocaleString("en-IN")} payouts, ${formatPaise(totals.allTime.netAmount)}`
+                  : "No gateway statement imported yet"
+              }
+            />
+          )}
+          {pending.has("payouts") ? (
+            <MetricSkeleton />
+          ) : failedKeys.has("payouts") ? (
+            <MetricUnavailable label="Provider fees" source="settlement list" />
+          ) : (
+            <Metric
+              label="Provider fees"
+              badge={<DataStatusBadge dataStatus={summary?.settlementDataStatus} />}
+              value={grossInPeriod > 0n ? formatPaise(feeInPeriod.toString()) : "No data"}
+              change={feeRate !== null ? `${feeRate.toFixed(2)}% of gross` : "—"}
+              tone={feeRate !== null && feeRate > 3 ? "negative" : "neutral"}
+              sub={grossInPeriod > 0n ? `On ${formatPaise(grossInPeriod.toString())} settled` : ""}
+            />
+          )}
+          {pending.has("summary") ? (
+            <MetricSkeleton />
+          ) : failedKeys.has("summary") ? (
+            <MetricUnavailable label="COD collected, not yet remitted" source="reconciliation summary" />
+          ) : (
+            <Metric
+              label="COD collected, not yet remitted"
+              badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
+              value={hasCourierData ? formatPaise(cod.deliveredValue) : "No data"}
+              change={hasCourierData ? `${cod.deliveredCount.toLocaleString("en-IN")} delivered` : "Connect a courier"}
+              tone={hasCourierData ? "warning" : "neutral"}
+              sub={hasCourierData ? "Couriers are holding this cash" : "Needs Shiprocket, Delhivery or ClickPost"}
+            />
+          )}
+          {/* The bucket this page used to hide inside "in transit". A parcel
+              picked up 287 days ago is not on its way — the courier stopped
+              reporting, and that is a different and much worse fact. */}
+          {pending.has("summary") ? (
+            <MetricSkeleton />
+          ) : failedKeys.has("summary") ? (
+            <MetricUnavailable label="Status unknown" source="reconciliation summary" />
+          ) : (
+            <Metric
+              label="Status unknown"
+              badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
+              value={hasCourierData ? formatPaise(cod.unknownValue) : "No data"}
+              change={
+                hasCourierData && cod.unknownCount > 0
+                  ? `${cod.unknownCount.toLocaleString("en-IN")} parcels · oldest ${cod.unknownOldestDays}d`
+                  : "—"
+              }
+              tone={hasCourierData && Number(cod.unknownValue) > 0 ? "negative" : "neutral"}
+              sub={
+                hasCourierData && cod.unknownCount > 0
+                  ? "Picked up over 30 days ago and never scanned again — neither collectible nor written off"
+                  : ""
+              }
+            />
           )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {loading ? (
-            <>
-              <MetricSkeleton />
-              <MetricSkeleton />
-              <MetricSkeleton />
-              <MetricSkeleton />
-            </>
+          {pending.has("summary") ? (
+            <MetricSkeleton />
+          ) : failedKeys.has("summary") ? (
+            <MetricUnavailable label="COD still in transit" source="reconciliation summary" />
           ) : (
-            <>
-              <Metric
-                label="COD still in transit"
-                badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
-                value={hasCourierData ? formatPaise(cod.inFlightValue) : "No data"}
-                change={hasCourierData ? `${cod.inFlightCount.toLocaleString("en-IN")} orders` : "Connect a courier"}
-                tone="neutral"
-                sub={hasCourierData ? "Recently picked up — genuinely still moving" : "Delivery status unknown"}
-              />
-              <Metric
-                label="RTO — never collected"
-                value={hasCourierData ? formatPaise(cod.rtoValue) : "No data"}
-                change={hasCourierData ? `${cod.rtoCount.toLocaleString("en-IN")} returned` : "Connect a courier"}
-                tone={hasCourierData && Number(cod.rtoValue) > 0 ? "negative" : "neutral"}
-                sub={hasCourierData ? "Came back undelivered — this cash will never arrive" : ""}
-              />
-              <Metric
-                label="Prepaid deposits already banked"
-                value={hasCourierData ? formatPaise(cod.onlineDepositsValue) : "No data"}
-                change={hasCourierData ? "PPCOD" : "—"}
-                tone="positive"
-                sub={hasCourierData ? "Collected online at checkout, not riding with the courier" : ""}
-              />
-              <Metric
-                label="Lines not matched to an order"
-                value={totals ? totals.unresolvedLines.toLocaleString("en-IN") : "No data"}
-                change={totals && totals.unresolvedLines > 0 ? "Needs attention" : "All resolved"}
-                tone={totals && totals.unresolvedLines > 0 ? "warning" : "positive"}
-                sub={
-                  totals && totals.unresolvedLines > 0
-                    ? "The provider settled something this system has never ingested"
-                    : "Every settled line points at an order we hold"
-                }
-              />
-            </>
+            <Metric
+              label="COD still in transit"
+              badge={<DataStatusBadge dataStatus={summary?.codDataStatus} />}
+              value={hasCourierData ? formatPaise(cod.inFlightValue) : "No data"}
+              change={hasCourierData ? `${cod.inFlightCount.toLocaleString("en-IN")} orders` : "Connect a courier"}
+              tone="neutral"
+              sub={hasCourierData ? "Recently picked up — genuinely still moving" : "Delivery status unknown"}
+            />
+          )}
+          {pending.has("summary") ? (
+            <MetricSkeleton />
+          ) : failedKeys.has("summary") ? (
+            <MetricUnavailable label="RTO — never collected" source="reconciliation summary" />
+          ) : (
+            <Metric
+              label="RTO — never collected"
+              value={hasCourierData ? formatPaise(cod.rtoValue) : "No data"}
+              change={hasCourierData ? `${cod.rtoCount.toLocaleString("en-IN")} returned` : "Connect a courier"}
+              tone={hasCourierData && Number(cod.rtoValue) > 0 ? "negative" : "neutral"}
+              sub={hasCourierData ? "Came back undelivered — this cash will never arrive" : ""}
+            />
+          )}
+          {pending.has("summary") ? (
+            <MetricSkeleton />
+          ) : failedKeys.has("summary") ? (
+            <MetricUnavailable label="Prepaid deposits already banked" source="reconciliation summary" />
+          ) : (
+            <Metric
+              label="Prepaid deposits already banked"
+              value={hasCourierData ? formatPaise(cod.onlineDepositsValue) : "No data"}
+              change={hasCourierData ? "PPCOD" : "—"}
+              tone="positive"
+              sub={hasCourierData ? "Collected online at checkout, not riding with the courier" : ""}
+            />
+          )}
+          {pending.has("payouts") ? (
+            <MetricSkeleton />
+          ) : failedKeys.has("payouts") ? (
+            <MetricUnavailable label="Lines not matched to an order" source="settlement list" />
+          ) : (
+            <Metric
+              label="Lines not matched to an order"
+              value={totals ? totals.unresolvedLines.toLocaleString("en-IN") : "No data"}
+              change={totals && totals.unresolvedLines > 0 ? "Needs attention" : "All resolved"}
+              tone={totals && totals.unresolvedLines > 0 ? "warning" : "positive"}
+              sub={
+                totals && totals.unresolvedLines > 0
+                  ? "The provider settled something this system has never ingested"
+                  : "Every settled line points at an order we hold"
+              }
+            />
           )}
         </div>
 
         {/* ---- The payouts themselves ---- */}
-        {loading ? null : hasPayouts ? (
+        {/* The failure arm comes before the empty one for the same reason the
+            cards have one: "No settlement statement has been imported for this
+            organisation" is a finding about the database, and a request that
+            did not answer produced no finding at all. */}
+        {pending.has("payouts") ? null : failedKeys.has("payouts") ? (
+          <NoDataPanel
+            title="Gateway and marketplace payouts"
+            reason="The settlement list did not answer, so the payouts for this period could not be read. This says nothing about whether a statement has been imported — it is a connection problem, not a zero."
+            tone="error"
+          />
+        ) : hasPayouts ? (
           <PayoutTable
             payouts={payouts.payouts}
             byLineType={totals.byLineType}
@@ -291,6 +396,24 @@ export default function SettlementsPage() {
         />
       </div>
     </>
+  );
+}
+
+// What a card shows when its OWN source failed. The empty states on this page
+// are confident sentences — "Import a statement", "Connect a courier", "Every
+// settled line points at an order we hold" — and every one of them is a claim
+// about the merchant's data. None of them can be made about a request that
+// never answered, so this arm sits between the skeleton and the empty state and
+// says only what is actually known: we asked, and nothing came back.
+function MetricUnavailable({ label, source }) {
+  return (
+    <Metric
+      label={label}
+      value="Couldn't load"
+      change="Request failed"
+      tone="neutral"
+      sub={`The ${source} did not answer — this is not a statement about your data.`}
+    />
   );
 }
 

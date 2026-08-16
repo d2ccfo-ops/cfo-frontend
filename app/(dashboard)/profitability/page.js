@@ -13,6 +13,7 @@ import CampaignProfitability from "@/components/cards/CampaignProfitability";
 import { useDateRange } from "@/components/controls/DateRangeContext";
 import EvidenceDrawer from "@/components/ui/EvidenceDrawer";
 import { fetchEvidence, evidenceToRows, downloadEvidenceCsv } from "@/lib/evidence";
+import { loadProgressively } from "@/components/lib/progressiveLoad";
 import { formatInrShort as rupeesShort } from "@/lib/money";
 
 // Every figure on this page comes from cfo-backend's /metrics/contribution-margin
@@ -24,6 +25,14 @@ import { formatInrShort as rupeesShort } from "@/lib/money";
 // cost layers missing OVERSTATES profit. The backend already knows whether each
 // CM level is reliable, so the cards render a percentage only when it says so,
 // and say what is missing when it doesn't.
+
+// One key per request. The four endpoints are not remotely equal in cost —
+// contribution-margin walks every order line while channel/campaign are small
+// aggregates — so the page tracks them separately and each card waits only on
+// its own source. A key is in `pending` until that request has settled, which
+// is the difference between a skeleton and a card claiming "Not measurable"
+// about a figure that is merely still in flight.
+const LOAD_KEYS = ["contribution", "products", "channel", "campaign"];
 
 // The backend sends per-SKU rupees; the table wants display strings. An uncosted
 // SKU gets "—" for COGS and contribution rather than a zero, because zero cost
@@ -55,7 +64,7 @@ export default function ProfitabilityPage() {
   // same glance, not after a second spinner.
   const [channels, setChannels] = useState(null);
   const [campaigns, setCampaigns] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(() => new Set(LOAD_KEYS));
   const [failed, setFailed] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [serverEvidence, setServerEvidence] = useState(null);
@@ -64,31 +73,74 @@ export default function ProfitabilityPage() {
     if (!dateReady) return;
     let cancelled = false;
     async function load() {
-      setLoading(true);
+      // Back to skeletons for the new period. Leaving the settled keys settled
+      // would show last month's margin under this month's heading for as long
+      // as the slowest request takes, which is a wrong number, not a stale one.
+      setPending(new Set(LOAD_KEYS));
       setFailed(false);
+      // And drop the payloads with them. `pending` alone hides stale figures
+      // only for as long as the keys stay pending, and the getToken catch below
+      // releases all four at once WITHOUT any request having answered — so on a
+      // reload where the token throws, last period's contribution and products
+      // would paint under the new period's heading. Cleared here, that path
+      // falls through to the cards' honest empty states instead. Costs nothing
+      // on the happy path: every card is already skeletoned by the line above.
+      setContribution(null);
+      setProducts(null);
+      setChannels(null);
+      setCampaigns(null);
       try {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [cRes, pRes, chRes, cpRes] = await Promise.all([
-          fetch(`${api}/metrics/contribution-margin${dateQuery}`, authed),
-          fetch(`${api}/metrics/product-profitability${dateQuery}`, authed),
-          fetch(`${api}/metrics/channel-profitability${dateQuery}`, authed),
-          fetch(`${api}/metrics/campaign-profitability${dateQuery}`, authed),
-        ]);
-        if (cancelled) return;
-        if (!cRes.ok && !pRes.ok) {
-          setFailed(true);
-          return;
-        }
-        setContribution(cRes.ok ? await cRes.json() : null);
-        setProducts(pRes.ok ? await pRes.json() : null);
-        setChannels(chRes.ok ? await chRes.json() : null);
-        setCampaigns(cpRes.ok ? await cpRes.json() : null);
+        // The banner claims the backend is unreachable, so it still takes BOTH
+        // core metrics failing, as the barrier version did. One endpoint down
+        // is that card's own "no data" story, not a dead backend.
+        const coreFailed = { contribution: false, products: false };
+        await loadProgressively(
+          [
+            { key: "contribution", url: `${api}/metrics/contribution-margin${dateQuery}`, apply: setContribution },
+            { key: "products", url: `${api}/metrics/product-profitability${dateQuery}`, apply: setProducts },
+            { key: "channel", url: `${api}/metrics/channel-profitability${dateQuery}`, apply: setChannels },
+            { key: "campaign", url: `${api}/metrics/campaign-profitability${dateQuery}`, apply: setCampaigns },
+          ],
+          {
+            init: authed,
+            isCancelled: () => cancelled,
+            onSettled: (key, ok) => {
+              // New Set, or React sees the same reference and never repaints
+              // the card that just got its answer.
+              setPending((p) => {
+                const next = new Set(p);
+                next.delete(key);
+                return next;
+              });
+              if (ok) return;
+              // A failed request drops its payload, exactly as the barrier
+              // version did with `res.ok ? await res.json() : null` — otherwise
+              // the previous period's numbers survive under the new dates.
+              if (key === "contribution") {
+                setContribution(null);
+                coreFailed.contribution = true;
+              } else if (key === "products") {
+                setProducts(null);
+                coreFailed.products = true;
+              } else if (key === "channel") {
+                setChannels(null);
+              } else if (key === "campaign") {
+                setCampaigns(null);
+              }
+              if (coreFailed.contribution && coreFailed.products) setFailed(true);
+            },
+          }
+        );
       } catch {
-        if (!cancelled) setFailed(true);
-      } finally {
-        if (!cancelled) setLoading(false);
+        // getToken threw, so no request was ever made and no key will ever
+        // settle — clear them by hand or the page skeletons forever.
+        if (!cancelled) {
+          setFailed(true);
+          setPending(new Set());
+        }
       }
     }
     load();
@@ -154,14 +206,16 @@ export default function ProfitabilityPage() {
             }}
             role="alert"
           >
-            <strong className="font-medium">Couldn&apos;t reach cfo-backend.</strong> Nothing below is live.
+            <strong className="font-medium">Couldn&apos;t reach cfo-backend.</strong> The margin and product
+            figures below could not be loaded — anything still showing a number came back fine.
           </div>
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {loading ? (
+          {/* The first three cards are all cuts of the same contribution
+              payload, so they share its key. */}
+          {pending.has("contribution") ? (
             <>
-              <MetricSkeleton />
               <MetricSkeleton />
               <MetricSkeleton />
               <MetricSkeleton />
@@ -212,18 +266,31 @@ export default function ProfitabilityPage() {
                 tone={coverage && coverage.valueCoveragePct >= 95 ? "positive" : "warning"}
                 sub="Share of order-line value with a landed cost on file"
               />
-              <Metric
-                label="Loss-making SKUs"
-                value={canRankByMargin ? lossMakers.length.toLocaleString("en-IN") : "Not measurable"}
-                change={
-                  canRankByMargin
-                    ? `${products.costedSkuCount} of ${products.skuCount} SKUs costed`
-                    : "Needs product costs"
-                }
-                tone={canRankByMargin && lossMakers.length > 0 ? "negative" : "neutral"}
-                sub={canRankByMargin ? "Selling below product cost (CM0 negative)" : marginBlockedReason}
-              />
             </>
+          )}
+          {/* Nominally the products card, but its `sub` renders
+              marginBlockedReason, which is derived from contribution's
+              cogsCoverage — so it waits on BOTH keys. products is a small
+              aggregate and contribution walks every order line, so products
+              lands first nearly every time: gating on products alone painted
+              "No costed order lines in this period" — a claim that the org has
+              none — off a coverage that was merely still in flight, then
+              rewrote its own subtitle when contribution landed. The two cards
+              above already hold this string behind the contribution gate. */}
+          {pending.has("products") || pending.has("contribution") ? (
+            <MetricSkeleton />
+          ) : (
+            <Metric
+              label="Loss-making SKUs"
+              value={canRankByMargin ? lossMakers.length.toLocaleString("en-IN") : "Not measurable"}
+              change={
+                canRankByMargin
+                  ? `${products.costedSkuCount} of ${products.skuCount} SKUs costed`
+                  : "Needs product costs"
+              }
+              tone={canRankByMargin && lossMakers.length > 0 ? "negative" : "neutral"}
+              sub={canRankByMargin ? "Selling below product cost (CM0 negative)" : marginBlockedReason}
+            />
           )}
         </div>
 
@@ -232,7 +299,7 @@ export default function ProfitabilityPage() {
             none of it. Reliable levels get their %; unreliable ones show the
             value with an explicit caveat instead of a percentage, because the
             missing layers only subtract — the true number is LOWER. */}
-        {!loading && contribution?.levels ? (
+        {!pending.has("contribution") && contribution?.levels ? (
           <div className="gcard p-5">
             <div className="mb-1 flex items-center gap-2 text-base font-medium text-foreground">
               The margin ladder
@@ -312,11 +379,11 @@ export default function ProfitabilityPage() {
         {/* P6.7. Above the margin-trend placeholder because it is a real
             answer to "where is the margin going" that the trend chart cannot
             give yet. */}
-        <ChannelProfitability data={channels} loading={loading} />
+        <ChannelProfitability data={channels} loading={pending.has("channel")} />
 
         {/* P6.6. Below channels: campaign is the finer question, and it only
             becomes worth reading once channel mix is understood. */}
-        <CampaignProfitability data={campaigns} loading={loading} />
+        <CampaignProfitability data={campaigns} loading={pending.has("campaign")} />
 
         <NoDataPanel
           term="chart-margin-trend"
@@ -324,7 +391,7 @@ export default function ProfitabilityPage() {
           reason="No historical margin series is stored yet — margins are computed on demand for the selected period, so there is nothing to plot over time. This turns on once daily metric snapshots are being written."
         />
 
-        {loading ? (
+        {pending.has("products") ? (
           <ProfitabilityTable title="Top products by revenue" loading />
         ) : (
           <ProfitabilityTable
@@ -336,7 +403,10 @@ export default function ProfitabilityPage() {
           />
         )}
 
-        {loading ? (
+        {/* The "enter product costs" panel below is a real finding, but only
+            once the endpoint has answered — offered while the request is in
+            flight it would tell a founder their costed SKUs don't exist. */}
+        {pending.has("products") ? (
           <ProfitabilityTable title="Most profitable products" loading />
         ) : canRankByMargin ? (
           <ProfitabilityTable
@@ -355,7 +425,7 @@ export default function ProfitabilityPage() {
           />
         )}
 
-        {loading ? null : canRankByMargin && lossMakers.length > 0 ? (
+        {pending.has("products") ? null : canRankByMargin && lossMakers.length > 0 ? (
           <ProfitabilityTable
             title="Loss-making products"
             badge={<DataStatusBadge dataStatus={products?.dataStatus} />}
@@ -366,7 +436,12 @@ export default function ProfitabilityPage() {
 
         {/* The backend's own caveats, surfaced rather than hidden. These are the
             difference between a number and a number you can act on. */}
-        {!loading && (contribution?.warnings?.length || products?.warnings?.length) ? (
+        {/* Waits on both keys rather than rendering per-source: this is one
+            merged list of caveats, and a half-list read as the complete set of
+            limits is a stronger claim than the data supports. */}
+        {!pending.has("contribution") &&
+        !pending.has("products") &&
+        (contribution?.warnings?.length || products?.warnings?.length) ? (
           <div className="gcard p-5">
             <div className="mb-2.5 text-base font-medium text-foreground">What limits these numbers</div>
             <ul className="flex list-disc flex-col gap-2 pl-5 text-[13px] leading-relaxed text-muted-foreground">

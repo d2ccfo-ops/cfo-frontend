@@ -6,10 +6,12 @@ import TopNav from "@/components/layout/TopNav";
 import Metric from "@/components/ui/Metric";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import MetricCardSkeleton from "@/components/ui/MetricCardSkeleton";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import CashForecastCard from "@/components/cards/CashForecastCard";
 import ScenarioPanel from "@/components/cards/ScenarioPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { formatInrShort } from "@/components/ui/AbbrCurrency";
+import { loadProgressively } from "@/components/lib/progressiveLoad";
 
 // Every figure here comes from cfo-backend's modules/calc/cashForecast.ts.
 // This page previously shipped a hardcoded ₹1.68 Cr projection and six invented
@@ -57,6 +59,12 @@ const HORIZONS = [
   { days: 90, label: "90 days" },
 ];
 
+// The four independent requests behind this page. They are named because each
+// card has to know whether ITS OWN source has answered: the forecast is by far
+// the dearest of the four, and under the old Promise.all barrier cash,
+// payables and burn-runway sat finished in memory waiting on it.
+const LOAD_KEYS = ["forecast", "cash", "payables", "burn"];
+
 export default function CashFlowPage() {
   const { getToken } = useAuth();
   const [horizon, setHorizon] = useState(30);
@@ -64,7 +72,20 @@ export default function CashFlowPage() {
   const [availableCash, setAvailableCash] = useState(null);
   const [payables, setPayables] = useState(null);
   const [burn, setBurn] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Which sources have not answered yet. A single page-level `loading` boolean
+  // would put the barrier straight back: every card would wait on the slowest
+  // request even though the responses now arrive one at a time.
+  const [pending, setPending] = useState(() => new Set(LOAD_KEYS));
+  // Which horizon the forecast currently on screen was computed for. Compared
+  // during RENDER, not reset inside the effect: an effect is flushed after
+  // paint, so there is one frame in which the "90 days" button already reads
+  // pressed while every figure under it — headline, component table, "Over 30
+  // days" column header — is still the 30-day answer.
+  const [loadedHorizon, setLoadedHorizon] = useState(null);
+  // True while the figure on screen does not answer for the selected horizon —
+  // either its request is in flight, or the reader has just picked a different
+  // horizon and this frame still holds the previous answer.
+  const forecastPending = pending.has("forecast") || loadedHorizon !== horizon;
   const [error, setError] = useState("");
   const [scenario, setScenario] = useState(null);
   const [scenarioRunning, setScenarioRunning] = useState(false);
@@ -78,28 +99,73 @@ export default function CashFlowPage() {
       // left on screen while the new base loads.
       setScenario(null);
       setScenarioError("");
+      // The same argument one level up: last horizon's figures under this
+      // horizon's label would be a wrong answer, not a stale one, so every
+      // card goes back to a skeleton for the duration of the new load.
+      setPending(new Set(LOAD_KEYS));
+      // Re-arming the skeletons is only half of it: the payloads are what the
+      // page falls back onto the moment a key is released. If getToken() throws
+      // the catch below releases ALL of them at once, and holding last
+      // horizon's payload there would put "Projected in 30 days" back on screen
+      // under the pressed "90 days" button with only a generic error line above
+      // it. Cleared here so that path lands on the empty states instead.
+      //
+      // ONLY the forecast. It is the single horizon-scoped payload — available
+      // cash, payables and burn-runway take no horizon parameter and return
+      // the identical answer for 7, 30 or 90 days, so blanking them would
+      // flash three cards for a change that cannot affect them.
+      setForecast(null);
+      // Likewise a claim about the load that is now starting, not the last one.
+      setError("");
       try {
         const token = await getToken();
         const headers = { Authorization: `Bearer ${token}` };
-        const [forecastRes, cashRes, payablesRes, burnRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/cash-forecast?horizon=${horizon}`, { headers }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/available-cash`, { headers }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/payables`, { headers }),
-          // Runway is the number a founder acts on from THIS screen — it was
-          // rendered on exceptions and daily-brief but absent from the one
-          // page that is actually about cash.
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics/burn-runway`, { headers }),
-        ]);
+        const api = process.env.NEXT_PUBLIC_API_URL;
+        const result = await loadProgressively(
+          [
+            {
+              key: "forecast",
+              url: `${api}/metrics/cash-forecast?horizon=${horizon}`,
+              apply: (d) => {
+                setForecast(d);
+                setLoadedHorizon(horizon);
+              },
+            },
+            { key: "cash", url: `${api}/metrics/available-cash`, apply: setAvailableCash },
+            { key: "payables", url: `${api}/metrics/payables`, apply: setPayables },
+            // Runway is the number a founder acts on from THIS screen — it was
+            // rendered on exceptions and daily-brief but absent from the one
+            // page that is actually about cash.
+            { key: "burn", url: `${api}/metrics/burn-runway`, apply: setBurn },
+          ],
+          {
+            init: { headers },
+            isCancelled: () => cancelled,
+            onSettled: (key, ok) => {
+              if (key === "forecast" && !ok) setError("Couldn't load the cash forecast.");
+              // A new Set, or React sees the same reference and skips the
+              // re-render that takes this card off its skeleton.
+              setPending((p) => {
+                const next = new Set(p);
+                next.delete(key);
+                return next;
+              });
+            },
+          }
+        );
         if (cancelled) return;
-        if (forecastRes.ok) setForecast(await forecastRes.json());
-        else setError("Couldn't load the cash forecast.");
-        if (cashRes.ok) setAvailableCash(await cashRes.json());
-        if (payablesRes.ok) setPayables(await payablesRes.json());
-        if (burnRes.ok) setBurn(await burnRes.json());
+        // Only bookkeeping happens after the await — nothing on screen waited
+        // for it. All four failing together is the backend being unreachable
+        // rather than four coincidences; one failure is already reported
+        // against its own card above.
+        if (result.ok === 0 && result.failed === LOAD_KEYS.length) setError("Couldn't reach the backend.");
       } catch {
-        if (!cancelled) setError("Couldn't reach the backend.");
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setError("Couldn't reach the backend.");
+        // No token means no answers are coming at all, so the cards are
+        // released from their skeletons to show their real empty states under
+        // the error rather than pulsing forever.
+        setPending(new Set());
       }
     }
     load();
@@ -165,7 +231,11 @@ export default function CashFlowPage() {
       <TopNav
         title="Cash-flow forecast"
         subtitle={
-          forecast
+          // Both halves of this string are the previous load's provenance — the
+          // period AND the generated-at stamp — so it may not be shown while
+          // the forecast is in flight. The else-arm is keyed to the live
+          // `horizon`, which makes it the correct thing to fall back to.
+          !forecastPending && forecast
             ? `Next ${forecast.horizonDays} days · ${forecast.timezone} · generated ${new Date(forecast.generatedAt).toLocaleString("en-IN")}`
             : `Projected balance across the next ${horizon} days`
         }
@@ -194,7 +264,13 @@ export default function CashFlowPage() {
               </button>
             ))}
           </div>
-          {forecast ? (
+          {/* This share is per-horizon by construction, and it sits millimetres
+              from the button that changes it — the tightest possible pairing of
+              a number with the control it belongs to, so it must not survive
+              the load its own control started. */}
+          {forecastPending ? (
+            <span className="h-3 w-72 animate-pulse rounded-sm bg-primary/10" role="status" aria-busy="true" />
+          ) : forecast ? (
             <span className="text-xs text-muted-foreground">
               {forecast.projectedInflowSharePct}% of projected inflow is from orders not yet placed
             </span>
@@ -202,8 +278,13 @@ export default function CashFlowPage() {
         </div>
 
         {/* The verdict, above the numbers rather than in a footnote. A reader
-            who only looks at the top of this page must still see it. */}
-        {forecast && forecast.reliability !== "usable" ? (
+            who only looks at the top of this page must still see it.
+            Reliability is horizon-dependent — a 7-day forecast can be `usable`
+            while the 90-day one is `inflows_only` — so the verdict from the
+            previous horizon is not a stale answer here, it is the wrong one.
+            No skeleton: this banner is absent whenever the forecast is
+            reliable, so absence while the answer is unknown claims nothing. */}
+        {!forecastPending && forecast && forecast.reliability !== "usable" ? (
           <div
             className="rounded-lg border p-4"
             style={{
@@ -222,28 +303,41 @@ export default function CashFlowPage() {
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {loading ? (
-            [0, 1, 2, 3, 4].map((i) => <MetricCardSkeleton key={i} />)
+          {/* This one card reads from BOTH sources — its value from the
+              forecast's opening balance, its change and its which-connection
+              prompt from available-cash — so it waits for both. Drawn on the
+              forecast alone it would tell the reader to go set an opening
+              balance on a connection whose status simply hasn't landed yet. */}
+          {forecastPending || pending.has("cash") ? (
+            <MetricCardSkeleton />
+          ) : (
+            <Metric
+              label="Available cash today"
+              value={
+                forecast?.openingBalance.basis === "measured"
+                  ? formatInrShort(paiseToRupees(forecast.openingBalance.valueMinor))
+                  : "Not set"
+              }
+              change={availableCash?.changePct != null ? `${availableCash.changePct > 0 ? "+" : ""}${availableCash.changePct}% vs last month` : undefined}
+              tone={availableCash?.changePct > 0 ? "positive" : "neutral"}
+              sub={
+                forecast?.openingBalance.basis === "measured"
+                  ? "Bank balance across connected accounts"
+                  : (availableCash?.missingOpeningBalance?.length ?? 0) > 0
+                    ? // Which account to fix, not just that one needs fixing.
+                      `${availableCash.missingOpeningBalance.length} bank connection${availableCash.missingOpeningBalance.length === 1 ? " needs" : "s need"} an opening balance — Connections page`
+                    : "Set an opening balance on a bank connection"
+              }
+            />
+          )}
+
+          {/* The remaining four are all read off the forecast payload, so they
+              share one gate. Every "—" and "No data" below is a real answer
+              about a real response; none of them may be shown before it. */}
+          {forecastPending ? (
+            [0, 1, 2, 3].map((i) => <MetricCardSkeleton key={i} />)
           ) : (
             <>
-              <Metric
-                label="Available cash today"
-                value={
-                  forecast?.openingBalance.basis === "measured"
-                    ? formatInrShort(paiseToRupees(forecast.openingBalance.valueMinor))
-                    : "Not set"
-                }
-                change={availableCash?.changePct != null ? `${availableCash.changePct > 0 ? "+" : ""}${availableCash.changePct}% vs last month` : undefined}
-                tone={availableCash?.changePct > 0 ? "positive" : "neutral"}
-                sub={
-                  forecast?.openingBalance.basis === "measured"
-                    ? "Bank balance across connected accounts"
-                    : (availableCash?.missingOpeningBalance?.length ?? 0) > 0
-                      ? // Which account to fix, not just that one needs fixing.
-                        `${availableCash.missingOpeningBalance.length} bank connection${availableCash.missingOpeningBalance.length === 1 ? " needs" : "s need"} an opening balance — Connections page`
-                      : "Set an opening balance on a bank connection"
-                }
-              />
               <Metric
                 label={
                   forecast?.reliability === "inflows_only"
@@ -308,7 +402,11 @@ export default function CashFlowPage() {
 
         {/* §55/§85 — burn and runway. A founder acts on runway from exactly
             this screen; it lived only on exceptions and the daily brief. */}
-        {!loading && burn ? (
+        {pending.has("burn") ? (
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[0, 1, 2].map((i) => <MetricCardSkeleton key={i} />)}
+          </div>
+        ) : burn ? (
           <div className="grid gap-4 sm:grid-cols-3">
             <Metric
               label="Monthly net burn"
@@ -333,7 +431,16 @@ export default function CashFlowPage() {
           </div>
         ) : null}
 
-        {series ? (
+        {/* Gated on the request, not on `series`: CashForecastCard takes no
+            loading prop, and this block is the largest money statement on the
+            page — label, closing figure, end date and confidence badge are all
+            keyed to the horizon that was just changed. Same call-site gate as
+            FinancialChart on the overview. */}
+        {forecastPending ? (
+          <div className="gcard h-[336px] animate-pulse p-5" role="status" aria-busy="true">
+            <span className="sr-only">Loading cash forecast</span>
+          </div>
+        ) : series ? (
           <CashForecastCard
             label={`${forecast.horizonDays}-day cash forecast`}
             value={`${formatInrShort(closing)} ${forecast.reliability === "inflows_only" ? "of inflows" : "projected"} on ${formatDay(lastDay.date)}`}
@@ -346,10 +453,18 @@ export default function CashFlowPage() {
           />
         ) : null}
 
-        {forecast ? (
+        {/* Kept MOUNTED across a horizon change. ScenarioPanel holds the
+            founder's typed levers and purchase amount in its own state, so
+            unmounting it while the new horizon loads silently discards what
+            they entered — and "what does this what-if look like over 90 days"
+            is exactly the workflow that changes the horizon. It is a control,
+            not a claim, so the rule about never showing a stale figure does
+            not apply to it; the run button is disabled while the base it would
+            run against is still in flight. */}
+        {forecastPending || forecast ? (
           <ScenarioPanel
             onRun={runScenario}
-            running={scenarioRunning}
+            running={scenarioRunning || forecastPending}
             result={scenario}
             error={scenarioError}
           />
@@ -358,7 +473,22 @@ export default function CashFlowPage() {
         {/* What the projection is built from, component by component. This is
             the §110 trust layer: a reader can see exactly which parts are
             measured, which are assumed, and which simply do not exist. */}
-        {forecast ? (
+        {forecastPending ? (
+          <div className="gcard p-5">
+            <div className="mb-3 text-base font-medium text-foreground">What this forecast is made of</div>
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  {/* The live `horizon`, not `forecast.horizonDays`: the header
+                      announces the period, and the payload under it is the one
+                      being replaced. */}
+                  <tr><th>Component</th><th>Basis</th><th>{`Over ${horizon} days`}</th><th>Why</th></tr>
+                </thead>
+                <TableSkeleton columns={4} rows={4} />
+              </table>
+            </div>
+          </div>
+        ) : forecast ? (
           <div className="gcard p-5">
             <div className="mb-3 text-base font-medium text-foreground">What this forecast is made of</div>
             <div style={{ overflowX: "auto" }}>
@@ -391,7 +521,20 @@ export default function CashFlowPage() {
 
         <div className="gcard p-5">
           <div className="mb-2.5 text-base font-medium text-foreground">Upcoming payments</div>
-          {payables?.upcoming?.length > 0 ? (
+          {/* This card was the worst of it: gated on nothing at all, it spent
+              every load stating that no scheduled payments are known and
+              blaming a missing accounting connection — about a request that
+              had not come back yet. */}
+          {pending.has("payables") ? (
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr><th>Payee</th><th>Bill</th><th>Amount</th><th>Due date</th><th>Status</th></tr>
+                </thead>
+                <TableSkeleton columns={5} rows={4} />
+              </table>
+            </div>
+          ) : payables?.upcoming?.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="table">
                 <thead>

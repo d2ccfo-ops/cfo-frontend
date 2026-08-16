@@ -10,6 +10,33 @@ import { useDateRange } from "@/components/controls/DateRangeContext";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import { deriveSystemHealth, deriveActions, formatInrShort } from "@/lib/insights";
 import { toAlerts } from "@/lib/anomalies";
+import { loadProgressively } from "@/components/lib/progressiveLoad";
+
+// Every payload this page paints, keyed. The set doubles as the "still in
+// flight" ledger: a key in `pending` means that card has no answer yet and
+// must show a skeleton rather than assert "No data" about a source that is
+// merely slow. Measured live, the cheapest of these answers in ~40ms and the
+// dearest in ~1,000ms, and the old Promise.all made all eleven wait for that
+// second.
+const METRIC_KEYS = [
+  "sales",
+  "revenue",
+  "rto",
+  "cash",
+  "ladder",
+  "contribution",
+  "freshness",
+  "products",
+  "burn",
+  "recon",
+  "anomalies",
+];
+
+// The two derived lists read several payloads each (see lib/insights.js), so
+// they stay in their loading state until every source they consult has
+// answered — otherwise "Nothing flagged" would mean "nothing has arrived yet".
+const ALERT_KEYS = ["anomalies", "ladder", "contribution", "freshness", "burn", "recon"];
+const ACTION_KEYS = ["contribution", "freshness", "products"];
 
 // This page was entirely fabricated: a hardcoded "Monday, 3 August 2026 ·
 // Synced 12 min ago", a summary paragraph asserting ₹1.84 Cr of cash and a
@@ -49,13 +76,13 @@ export default function DailyBriefPage() {
   const { getToken } = useAuth();
   const { query: dateQuery, key: dateKey, preset: datePreset, ready: dateReady } = useDateRange();
 
-  const [data, setData] = useState(null);
+  const [data, setData] = useState({});
+  const [pending, setPending] = useState(() => new Set(METRIC_KEYS));
   // P4.5's narrative. Its own state, its own request, its own failure mode:
   // the deterministic brief must render in full whether or not a model wrote
   // anything, so a failure here can never blank the page.
   const [brief, setBrief] = useState(null);
   const [briefLoading, setBriefLoading] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   // Formatted when the data lands, not during render — `new Date()` in a render
   // body is impure, and this replaces a date that was hardcoded to 3 August.
@@ -65,70 +92,95 @@ export default function DailyBriefPage() {
     if (!dateReady) return;
     let cancelled = false;
     async function load() {
-      setLoading(true);
+      // Back to skeletons, not to the previous period's figures: a card still
+      // showing last month's revenue under a new date range is a lie with a
+      // number in it.
+      setData({});
+      setPending(new Set(METRIC_KEYS));
       setFailed(false);
       try {
         const token = await getToken();
         const authed = { headers: { Authorization: `Bearer ${token}` } };
         const api = process.env.NEXT_PUBLIC_API_URL;
-        const [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes, anomaliesRes] =
-          await Promise.all([
-            fetch(`${api}/metrics/sales${dateQuery}`, authed),
-            fetch(`${api}/metrics/revenue${dateQuery}`, authed),
-            fetch(`${api}/metrics/rto-rate${dateQuery}`, authed),
-            fetch(`${api}/metrics/available-cash${dateQuery}`, authed),
-            fetch(`${api}/metrics/revenue-ladder${dateQuery}`, authed),
-            fetch(`${api}/metrics/contribution-margin${dateQuery}`, authed),
-            fetch(`${api}/metrics/freshness`, authed),
-            fetch(`${api}/metrics/product-profitability${dateQuery}`, authed),
-            fetch(`${api}/metrics/burn-runway`, authed),
+        const store = (key) => (payload) => setData((d) => ({ ...d, [key]: payload }));
+        // Whether anything at all answered. Only the metrics count towards it:
+        // the narrative is commentary, so a brief arriving while every figure
+        // failed is still an unreachable backend.
+        let anyMetric = false;
+        // Counted so the failure verdict can be reached the moment the LAST
+        // METRIC settles. The promise below also covers /ai/daily-brief, which
+        // no tile or derived list reads, so waiting on it left a window where
+        // metrics that failed fast had already painted "No data" / "Connect a
+        // sales channel" with no error banner above them.
+        let metricsSettled = 0;
+        await loadProgressively(
+          [
+            { key: "sales", url: `${api}/metrics/sales${dateQuery}`, apply: store("sales") },
+            { key: "revenue", url: `${api}/metrics/revenue${dateQuery}`, apply: store("revenue") },
+            { key: "rto", url: `${api}/metrics/rto-rate${dateQuery}`, apply: store("rto") },
+            { key: "cash", url: `${api}/metrics/available-cash${dateQuery}`, apply: store("cash") },
+            { key: "ladder", url: `${api}/metrics/revenue-ladder${dateQuery}`, apply: store("ladder") },
+            { key: "contribution", url: `${api}/metrics/contribution-margin${dateQuery}`, apply: store("contribution") },
+            { key: "freshness", url: `${api}/metrics/freshness`, apply: store("freshness") },
+            { key: "products", url: `${api}/metrics/product-profitability${dateQuery}`, apply: store("products") },
+            { key: "burn", url: `${api}/metrics/burn-runway`, apply: store("burn") },
             // The COD position + money exceptions belong in a CFO brief.
-            fetch(`${api}/reconciliation/summary${dateQuery}`, authed),
+            { key: "recon", url: `${api}/reconciliation/summary${dateQuery}`, apply: store("recon") },
             // §17 anomalies. Not date-filtered — the engine runs on its own
             // trailing-28-day window, so scoping to the picker would hide
             // findings whose window doesn't line up with it.
-            fetch(`${api}/anomalies`, authed),
-          ]);
-        if (cancelled) return;
-        const all = [salesRes, revenueRes, rtoRes, cashRes, ladderRes, contributionRes, freshnessRes, productsRes, burnRes, reconRes, anomaliesRes];
-        if (!all.some((r) => r.ok)) {
-          setFailed(true);
-          return;
-        }
-        setData({
-          sales: salesRes.ok ? await salesRes.json() : null,
-          revenue: revenueRes.ok ? await revenueRes.json() : null,
-          rto: rtoRes.ok ? await rtoRes.json() : null,
-          cash: cashRes.ok ? await cashRes.json() : null,
-          ladder: ladderRes.ok ? await ladderRes.json() : null,
-          contribution: contributionRes.ok ? await contributionRes.json() : null,
-          freshness: freshnessRes.ok ? await freshnessRes.json() : null,
-          products: productsRes.ok ? await productsRes.json() : null,
-          burn: burnRes.ok ? await burnRes.json() : null,
-          recon: reconRes.ok ? await reconRes.json() : null,
-          anomalies: anomaliesRes.ok ? await anomaliesRes.json() : null,
-        });
-        setToday(
-          new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+            { key: "anomalies", url: `${api}/anomalies`, apply: store("anomalies") },
+            // Read, never generated: GET /ai/daily-brief returns what the
+            // nightly sweep wrote. A page load that could trigger a model call
+            // would make the first person in each morning wait for one. It
+            // used to be requested only after all eleven metrics had resolved,
+            // which made the sentence a founder reads first the last thing on
+            // the page to arrive.
+            { key: "brief", url: `${api}/ai/daily-brief`, apply: setBrief },
+          ],
+          {
+            init: authed,
+            isCancelled: () => cancelled,
+            onSettled: (key, ok) => {
+              if (key === "brief") {
+                setBriefLoading(false);
+                return;
+              }
+              setPending((p) => {
+                const n = new Set(p);
+                n.delete(key);
+                return n;
+              });
+              metricsSettled += 1;
+              // The date line is the page asserting it has today's numbers, so
+              // it appears with the first one rather than when nothing answered.
+              if (ok && !anyMetric) {
+                anyMetric = true;
+                setToday(
+                  new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+                );
+              }
+              // Every figure has now been asked and none answered: the banner
+              // must appear in the same tick the last tile drops its skeleton,
+              // or the tiles' empty states stand alone as a claim about the
+              // data rather than about the connection.
+              if (metricsSettled === METRIC_KEYS.length && !anyMetric) setFailed(true);
+            },
+          }
         );
-        // Read, never generated: GET /ai/daily-brief returns what the nightly
-        // sweep wrote. A page load that could trigger a model call would make
-        // the first person in each morning wait for one.
-        try {
-          const briefRes = await fetch(`${api}/ai/daily-brief`, authed);
-          if (!cancelled && briefRes.ok) setBrief(await briefRes.json());
-        } catch {
-          /* the narrative is commentary; the numbers below stand on their own */
-        } finally {
-          if (!cancelled) setBriefLoading(false);
-        }
+        // Bookkeeping only, and deliberately nothing after it: every card
+        // painted the moment its own source answered, and the failure verdict
+        // is settled in onSettled. This promise resolves on the slowest request
+        // of ANY kind, so anything decided here runs late by the difference
+        // between the last metric and the brief.
       } catch {
         if (!cancelled) {
           setFailed(true);
           setBriefLoading(false);
+          // The token never arrived, so no request was made and no key can
+          // settle on its own — leaving them pending skeletons the page forever.
+          setPending(new Set());
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     }
     load();
@@ -137,9 +189,12 @@ export default function DailyBriefPage() {
     };
   }, [getToken, dateQuery, dateKey, dateReady]);
 
-  // Same two sources, same order, as Overview and Exceptions.
-  const alerts = data ? [...toAlerts(data.anomalies), ...deriveSystemHealth(data)] : [];
-  const actions = data ? deriveActions(data) : [];
+  // Same two sources, same order, as Overview and Exceptions. Both tolerate a
+  // partly-filled payload, so each list grows as its sources land.
+  const alerts = [...toAlerts(data.anomalies), ...deriveSystemHealth(data)];
+  const actions = deriveActions(data);
+  const alertsPending = ALERT_KEYS.some((k) => pending.has(k));
+  const actionsPending = ACTION_KEYS.some((k) => pending.has(k));
 
   const sales = data?.sales;
   const hasOrders = sales && sales.orders.value > 0;
@@ -179,14 +234,14 @@ export default function DailyBriefPage() {
 
         <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
           <QuickMetric
-            loading={loading}
+            loading={pending.has("sales")}
             label="Orders"
             value={hasOrders ? sales.orders.value.toLocaleString("en-IN") : "No data"}
             note={hasOrders ? pct(sales.orders.changePct) : "Connect a sales channel"}
             tone={hasOrders && (sales.orders.changePct ?? 0) >= 0 ? "positive" : "negative"}
           />
           <QuickMetric
-            loading={loading}
+            loading={pending.has("revenue")}
             label="Net revenue"
             badge={<DataStatusBadge dataStatus={data?.revenue?.dataStatus} />}
             value={data?.revenue ? formatInrShort(data.revenue.value) : "No data"}
@@ -194,14 +249,14 @@ export default function DailyBriefPage() {
             tone={data?.revenue && (data.revenue.changePct ?? 0) >= 0 ? "positive" : "negative"}
           />
           <QuickMetric
-            loading={loading}
+            loading={pending.has("rto")}
             label="RTO rate"
             value={rto?.rtoRatePct != null ? `${rto.rtoRatePct}%` : "No data"}
             note={rto?.rtoRatePct != null ? `${rto.rtoCount} of ${rto.dispatchedCount} dispatched` : "Connect a courier"}
             tone={rto?.rtoRatePct != null && rto.rtoRatePct > 10 ? "negative" : "neutral"}
           />
           <QuickMetric
-            loading={loading}
+            loading={pending.has("cash")}
             label="Available cash"
             value={hasCash ? formatInrShort(cash.value) : "No data"}
             note={hasCash ? "Bank accounts only" : "Connect a bank account"}
@@ -211,7 +266,7 @@ export default function DailyBriefPage() {
               orders, revenue, RTO, cash, and not one word on margin. CM0 is the
               first reliable rung of the ladder; the caveat says which rung. */}
           <QuickMetric
-            loading={loading}
+            loading={pending.has("contribution")}
             label="Gross margin (CM0)"
             badge={<DataStatusBadge dataStatus={data?.contribution?.dataStatus} />}
             value={
@@ -226,9 +281,11 @@ export default function DailyBriefPage() {
             }
             tone={data?.contribution?.levels?.cm0?.reliable ? "positive" : "neutral"}
           />
+          {/* No skeleton while recon is in flight: whether this card exists at
+              all depends on the answer, and an absent card claims nothing —
+              whereas one that appears and then vanishes would. */}
           {(data?.recon?.codPosition ?? data?.recon?.cod)?.hasCourierData ? (
             <QuickMetric
-              loading={loading}
               label="COD gone dark"
               badge={<DataStatusBadge dataStatus={data?.recon?.codDataStatus} />}
               value={formatInrShort(Number(((data.recon.codPosition ?? data.recon.cod).unknownValue).slice(0, -2) || "0"))}
@@ -251,24 +308,26 @@ export default function DailyBriefPage() {
             Needs your attention
           </h2>
           <div className="flex flex-col gap-3">
-            {loading ? (
+            {/* Findings show as they arrive; the skeleton stays below them
+                until the last source has answered, because "Nothing flagged"
+                is only true once every source has been asked. */}
+            {alerts.map((a) => (
+              <AlertCard
+                key={a.id}
+                severity={a.severity}
+                title={a.title}
+                description={a.description}
+                meta={a.meta}
+                actionLabel="View details"
+                actionHref={a.href}
+              />
+            ))}
+            {alertsPending ? (
               <div className="gcard flex flex-col gap-3 p-5" role="status" aria-busy="true">
                 <div className="h-4 w-1/3 animate-pulse rounded-sm bg-primary/10" />
                 <div className="h-3 w-4/5 animate-pulse rounded-sm bg-primary/10" />
               </div>
-            ) : alerts.length > 0 ? (
-              alerts.map((a) => (
-                <AlertCard
-                  key={a.id}
-                  severity={a.severity}
-                  title={a.title}
-                  description={a.description}
-                  meta={a.meta}
-                  actionLabel="View details"
-                  actionHref={a.href}
-                />
-              ))
-            ) : failed ? null : (
+            ) : alerts.length > 0 || failed ? null : (
               <NoDataPanel reason="Nothing flagged against the data available for this period." />
             )}
           </div>
@@ -279,24 +338,23 @@ export default function DailyBriefPage() {
             Recommended today
           </h2>
           <div className="flex flex-col gap-3">
-            {loading ? (
+            {actions.map((r) => (
+              <AlertCard
+                key={r.id}
+                severity="info"
+                title={r.title}
+                description={r.description}
+                meta={r.meta}
+                actionLabel="Open"
+                actionHref={r.href}
+              />
+            ))}
+            {actionsPending ? (
               <div className="gcard flex flex-col gap-3 p-5" role="status" aria-busy="true">
                 <div className="h-4 w-1/3 animate-pulse rounded-sm bg-primary/10" />
                 <div className="h-3 w-4/5 animate-pulse rounded-sm bg-primary/10" />
               </div>
-            ) : actions.length > 0 ? (
-              actions.map((r) => (
-                <AlertCard
-                  key={r.id}
-                  severity="info"
-                  title={r.title}
-                  description={r.description}
-                  meta={r.meta}
-                  actionLabel="Open"
-                  actionHref={r.href}
-                />
-              ))
-            ) : failed ? null : (
+            ) : actions.length > 0 || failed ? null : (
               <NoDataPanel reason="No outstanding setup actions — every source this brief can check is connected and current." />
             )}
           </div>
