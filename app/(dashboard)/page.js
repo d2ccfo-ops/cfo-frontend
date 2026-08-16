@@ -455,7 +455,7 @@ export default function OverviewPage() {
   const [drawer, setDrawer] = useState({ open: false, title: "", sourceLabel: "", rows: [], evidenceKey: null });
   const closeDrawer = () => setDrawer((d) => ({ ...d, open: false }));
 
-  const { getToken } = useAuth();
+  const { getToken, isLoaded } = useAuth();
   const { organization } = useOrganization();
   // getToken is something this page CALLS, not something it reacts to — but
   // Clerk hands back a new function identity once the session finishes
@@ -561,12 +561,24 @@ export default function OverviewPage() {
   // difference and clean it up. Cleared immediately after.
   const staleLayoutRef = useRef(null);
 
+  // isLoaded, because Clerk resolves getToken to null until the session has
+  // hydrated and this effect ran before it. Measured on the live deployment:
+  // every cold load sent `Bearer null`, took a 401, and rendered the shipped
+  // default order in place of whatever the reader had arranged. It corrected
+  // itself on the next getToken identity, so the cost was a wasted round trip
+  // and a visible flash of the wrong layout rather than a lost one — but both
+  // are avoidable by waiting for the answer Clerk is about to give.
+  //
+  // The token is then read through the ref rather than the dep, so the ~60s
+  // rotation does not re-run this and re-fetch a preference that cannot have
+  // changed. isLoaded flips once and stays; nothing else here needs to.
   useEffect(() => {
+    if (!isLoaded) return;
     let cancelled = false;
     (async () => {
       let restored = null;
       try {
-        const token = await getToken();
+        const token = await getTokenRef.current();
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/preferences/dashboard-layout?page=overview`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -599,7 +611,7 @@ export default function OverviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [getToken]);
+  }, [isLoaded]);
 
   // Saved whenever the set or order actually changes. No debounce needed: add
   // and remove are single clicks, and reorderTo returns the same array
@@ -613,7 +625,13 @@ export default function OverviewPage() {
     const controller = new AbortController();
     (async () => {
       try {
-        const token = await getToken();
+        // Through the ref, not the dep. With getToken listed below, a token
+        // rotation re-ran this effect and its cleanup aborted the PUT that was
+        // still in flight — and persistedOrderRef was already advanced to the
+        // new order, so the save was dropped and never retried. The layout
+        // would then be lost on the next load with nothing on screen having
+        // suggested it.
+        const token = await getTokenRef.current();
         await fetch(`${process.env.NEXT_PUBLIC_API_URL}/preferences/dashboard-layout`, {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -626,7 +644,7 @@ export default function OverviewPage() {
       }
     })();
     return () => controller.abort();
-  }, [pinned, layoutLoaded, getToken]);
+  }, [pinned, layoutLoaded]);
 
   const available = [...METRICS_RAW, ...EXTRA_METRICS].filter(
     (m) => !pinned.some((x) => x.label === m.label),
