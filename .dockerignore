@@ -1,0 +1,16 @@
+# .env.local holds the Clerk secret key. `gcloud builds submit` tars this
+# directory and uploads it, so an omission here puts that key in a Cloud
+# Storage bucket and then in an image layer.
+.env
+.env.*
+!.env.local.example
+
+node_modules
+.next
+
+.git
+.gitignore
+
+.DS_Store
+*.log
+npm-debug.log*
