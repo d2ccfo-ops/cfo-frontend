@@ -155,6 +155,28 @@ const LIVE_KEYS = [
   "payables", "recon", "anomalies", "snapshot",
 ];
 
+// GET /metrics/overview answers for thirteen of the keys above in one request.
+// Its response is keyed by the URL segment of the endpoint each figure used to
+// come from; these are this page's own names for the same things. Kept as an
+// explicit map rather than derived, because a silent mismatch here does not
+// error — the card simply never leaves its skeleton.
+const OVERVIEW_KEY_BY_METRIC = {
+  "revenue": "revenue",
+  "rto-rate": "rto",
+  "cash-received": "cash",
+  "available-cash": "availableCash",
+  "ad-spend": "adSpend",
+  "ad-efficiency": "adEfficiency",
+  "sales": "sales",
+  "inventory-value": "inventoryValue",
+  "contribution-margin": "contribution",
+  "revenue-ladder": "ladder",
+  "product-profitability": "products",
+  "burn-runway": "burn",
+  "payables": "payables",
+};
+const OVERVIEW_KEYS = Object.values(OVERVIEW_KEY_BY_METRIC);
+
 const CARD_SOURCES = {
   "Available cash": ["availableCash"],
   // revenue alone. The hero's sparkline comes from `snapshot`, deliberately
@@ -733,20 +755,63 @@ export default function OverviewPage() {
         // flight. See components/lib/progressiveLoad.js.
         const { ok } = await loadProgressively(
           [
-            { key: "revenue", url: `${api}/metrics/revenue${dateQuery}`, apply: setLiveRevenue },
-            { key: "rto", url: `${api}/metrics/rto-rate${dateQuery}`, apply: setLiveRto },
-            { key: "cash", url: `${api}/metrics/cash-received${dateQuery}`, apply: setLiveCash },
-            { key: "availableCash", url: `${api}/metrics/available-cash${dateQuery}`, apply: setLiveAvailableCash },
-            { key: "adSpend", url: `${api}/metrics/ad-spend${dateQuery}`, apply: setLiveAdSpend },
-            { key: "adEfficiency", url: `${api}/metrics/ad-efficiency${dateQuery}`, apply: setLiveAdEfficiency },
-            { key: "sales", url: `${api}/metrics/sales${dateQuery}`, apply: setLiveSales },
+            // THIRTEEN CARDS, ONE REQUEST. Each figure is still computed by the
+            // same calc module the individual endpoint used — /metrics/overview
+            // holds no arithmetic of its own — so nothing here changes what any
+            // number means.
+            //
+            // WHAT IT COSTS: these thirteen now paint together rather than one
+            // by one. Warm that is a single ~50ms request and strictly better
+            // than thirteen; cold it is one wait instead of a staggered fill.
+            // The durable cache behind calcCache makes cold rare (a write, not
+            // a clock, is what empties it now), which is what makes the trade
+            // worth taking. The remaining keys below still stream in
+            // independently, so the page has not gone back to a barrier.
+            //
+            // 207 is a SUCCESS here: some metrics answered and some did not.
+            // res.ok covers it, `metrics` carries whatever worked, and `failed`
+            // names the rest so those cards fall through to their own error
+            // state instead of a skeleton that never ends.
+            {
+              key: "overview",
+              url: `${api}/metrics/overview${dateQuery}`,
+              apply: (data) => {
+                const metrics = data?.metrics ?? {};
+                const applyByMetric = {
+                  "revenue": setLiveRevenue,
+                  "rto-rate": setLiveRto,
+                  "cash-received": setLiveCash,
+                  "available-cash": setLiveAvailableCash,
+                  "ad-spend": setLiveAdSpend,
+                  "ad-efficiency": setLiveAdEfficiency,
+                  "sales": setLiveSales,
+                  "inventory-value": setLiveInventoryValue,
+                  "contribution-margin": setLiveContribution,
+                  "revenue-ladder": setLiveLadder,
+                  "product-profitability": setLiveProducts,
+                  "burn-runway": setLiveBurn,
+                  "payables": setLivePayables,
+                };
+                for (const [metric, setter] of Object.entries(applyByMetric)) {
+                  if (metrics[metric] !== undefined) setter(metrics[metric]);
+                }
+                // A section the server could not compute is a failed card, not
+                // an empty one — same distinction the loader draws for a whole
+                // request that failed.
+                const failedMetrics = Object.keys(data?.failed ?? {});
+                if (failedMetrics.length > 0) {
+                  setFailedKeys((prev) => {
+                    const next = new Set(prev);
+                    for (const m of failedMetrics) {
+                      const key = OVERVIEW_KEY_BY_METRIC[m];
+                      if (key) next.add(key);
+                    }
+                    return next;
+                  });
+                }
+              },
+            },
             { key: "freshness", url: `${api}/metrics/freshness`, apply: setLiveFreshness },
-            { key: "inventoryValue", url: `${api}/metrics/inventory-value`, apply: setLiveInventoryValue },
-            { key: "contribution", url: `${api}/metrics/contribution-margin${dateQuery}`, apply: setLiveContribution },
-            { key: "ladder", url: `${api}/metrics/revenue-ladder${dateQuery}`, apply: setLiveLadder },
-            { key: "products", url: `${api}/metrics/product-profitability${dateQuery}`, apply: setLiveProducts },
-            { key: "burn", url: `${api}/metrics/burn-runway`, apply: setLiveBurn },
-            { key: "payables", url: `${api}/metrics/payables`, apply: setLivePayables },
             // For the COD position card — the landing page never showed the money
             // couriers are holding (or have gone silent on), which is the single
             // largest number in the system.
@@ -787,10 +852,23 @@ export default function OverviewPage() {
             // mutated one would never re-render and no card would ever leave
             // its skeleton.
             onSettled: (key, ok) => {
-              if (!ok) setFailedKeys((prev) => new Set(prev).add(key));
+              // "overview" is one request standing in for thirteen cards. The
+              // loader only knows the request; the page tracks the cards. If
+              // this expansion were missing, a failed batch would leave all
+              // thirteen pending forever — thirteen skeletons that never
+              // resolve, which is the worst state this page can be in because
+              // it looks like loading rather than like an error.
+              const keys = key === "overview" ? OVERVIEW_KEYS : [key];
+              if (!ok) {
+                setFailedKeys((prev) => {
+                  const next = new Set(prev);
+                  for (const k of keys) next.add(k);
+                  return next;
+                });
+              }
               setPending((prev) => {
                 const next = new Set(prev);
-                next.delete(key);
+                for (const k of keys) next.delete(k);
                 return next;
               });
             },
