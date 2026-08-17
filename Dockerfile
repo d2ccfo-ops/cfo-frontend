@@ -72,5 +72,12 @@ COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
 
+# Which commit produced this image. See cfo-backend/Dockerfile for why it sits
+# after every COPY rather than near the top.
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV GIT_SHA=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 USER node
 CMD ["node", "server.js"]

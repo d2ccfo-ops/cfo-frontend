@@ -16,6 +16,7 @@ import DemoDataBanner from "@/components/layout/DemoDataBanner";
 import NotificationBell from "@/components/layout/NotificationBell";
 import { AskCfoProvider } from "@/components/ai/askEngine";
 import AskCfoOverlay from "@/components/ai/AskCfoOverlay";
+import Telemetry from "@/components/layout/Telemetry";
 
 // The date-range provider wraps the whole shell because the picker that sets
 // it lives in this header while everything that reads it lives in {children}.
@@ -183,6 +184,12 @@ export default function DashboardChrome({ children }) {
           which would close the popup mid-answer whenever a link was followed
           behind it. */}
       <AskCfoOverlay />
+      {/* Renders nothing. It measures what the browser experienced — which is
+          the only latency a customer has an opinion about — and reports
+          exceptions that never reach the server because they happen after the
+          response does. Outside the keyed wrapper for the same reason as the
+          overlay above: it must observe a navigation, not be destroyed by one. */}
+      <Telemetry />
     </div>
     </AskCfoProvider>
     </DateRangeProvider>
